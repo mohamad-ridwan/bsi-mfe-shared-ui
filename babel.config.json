@@ -1,0 +1,17 @@
+{
+  "presets": [
+    [
+      "@babel/preset-env", // Melakukan transpile sintaks JavaScript modern (ES2020+) menjadi sintaks yang kompatibel dengan browser target.
+      {
+        "targets": "> 0.25%, not dead"
+      }
+    ],
+    [
+      "@babel/preset-react", // Mengubah sintaks JSX seperti <Box>...</Box> menjadi fungsi JavaScript standar _jsx(Box, ...). Fitur modern ini memungkinkan Anda menulis JSX tanpa harus manual menulis import React from 'react' di setiap file.
+      {
+        "runtime": "automatic"
+      }
+    ],
+    "@babel/preset-typescript" // Menghapus (strip out) tipe data TypeScript (interface, type, generic <T>) sehingga menjadi JavaScript murni.
+  ]
+}
