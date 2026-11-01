@@ -100,67 +100,67 @@ Sebelum sprint dimulai, diadakan sesi **3 Amigos**:
 
 ### 3.3 Penulisan Test Case JIRA Xray Menggunakan Cucumber (Gherkin Syntax)
 
-Di JIRA dengan plugin **Xray**, QC membuat tiket bertipe `Test` dengan atribut `Test Type: Cucumber`. File fitur ini diekspor/disinkronkan dengan script otomasi:
+Di JIRA dengan plugin **Xray**, QC membuat tiket terpisah bertipe `Test` dengan atribut `Test Type: Cucumber` untuk setiap skenario uji (1 Test Ticket = 1 Scenario). Format Gherkin ditulis dalam bahasa Inggris sesuai standar Cucumber internasional dan step library Xray:
 
 #### File: `src/features/transaction_form_component.feature`
 
 ```gherkin
 @ComponentTest @TransactionForm @BSI-SHARED-204
-Feature: Komponen Reusable TransactionForm pada Shared UI
-  Sebagai pengembang Micro-Frontend perbankan (BSI/BNI)
-  Saya ingin menggunakan komponen TransactionForm yang terstandarisasi
-  Agar nasabah mendapatkan pengalaman transaksi yang aman, konsisten, dan bebas dari double debet
+Feature: TransactionForm Reusable Component for Shared UI
+  As a banking Micro-Frontend developer (BSI/BNI)
+  I want to use a standardized TransactionForm component
+  So that customers experience secure, consistent transactions with double-debit protection
 
   Background:
-    Given Komponen TransactionForm dimuat dengan konfigurasi tema Bank BSI
-    And Properti dasar formulir telah diinisialisasi
+    Given the TransactionForm component is loaded with Bank BSI theme configuration
+    And standard form props are initialized
 
   @Positive @Smoke
-  Scenario: TC-XRAY-001 - Render formulir transaksi dengan properti standar
-    Then Header menampilkan judul "Formulir Transaksi"
-    And Header menampilkan subjudul "Bank Syariah Indonesia"
-    And Input nominal menampilkan awalan mata uang "Rp"
-    And Tombol submit menampilkan teks "Kirim Transaksi" dalam keadaan aktif
+  Scenario: TC-XRAY-001 - Render transaction form with standard default props
+    Then the header should display title "Formulir Transaksi"
+    And the header should display subtitle "Bank Syariah Indonesia"
+    And the amount input should display currency prefix "Rp"
+    And the submit button should display text "Kirim Transaksi" and be enabled
 
   @Validation @BoundaryValueAnalysis
-  Scenario Outline: TC-XRAY-002 - Validasi batas nilai nominal transfer
-    When Pengguna memasukkan nominal sebesar "<input_nominal>"
-    Then Nilai yang diteruskan ke callback onChange adalah <expected_value>
+  Scenario Outline: TC-XRAY-002 - Validate transaction amount boundary limits
+    When the user inputs amount "<input_nominal>"
+    Then the amount value passed to onChange callback should be <expected_value>
 
     Examples:
-      | input_nominal | expected_value | keterangan                     |
-      | 50000         | 50000          | Nilai valid nominal normal     |
-      | 100000000000  | 100000000000   | Nilai batas maksimum 100 M     |
-      | 0             | 0              | Nilai kosong/reset ke nol      |
+      | input_nominal | expected_value | description                       |
+      | 50000         | 50000          | Valid standard transaction amount |
+      | 100000000000  | 100000000000   | Maximum boundary limit (100B)     |
+      | 0             | 0              | Reset or empty amount value       |
 
   @Security @AntiDoubleDebet @Critical
-  Scenario: TC-XRAY-003 - Proteksi idempotency saat proses submit berlangsung
-    Given Formulir diisi dengan nominal "250000" dan keterangan "Bayar Tagihan Listrik"
-    When Properti isLoading diubah menjadi "true"
-    Then Tombol submit harus dalam status disabled
-    And Teks tombol submit berubah menjadi "Memproses..."
-    And Indikator circular progress muncul di dalam tombol
-    And Input nominal dan keterangan harus dalam status disabled
-    When Pengguna mencoba menekan tombol submit secara paksa
-    Then Callback onSubmit tidak boleh dieksekusi sama sekali
+  Scenario: TC-XRAY-003 - Idempotency protection during submit process
+    Given the form is filled with amount "250000" and description "Bayar Tagihan Listrik"
+    When the isLoading property is set to "true"
+    Then the submit button should be disabled
+    And the submit button label should change to "Memproses..."
+    And a circular progress indicator should appear inside the button
+    And the amount and description inputs should be disabled
+    When the user attempts to force click the submit button
+    Then the onSubmit callback must not be executed
 
   @UI @Accessibility @Negative
-  Scenario: TC-XRAY-004 - Tampilan pesan error validasi per-field
-    Given Consumer MFE mengirimkan properti error:
+  Scenario: TC-XRAY-004 - Display validation error messages and accessibility attributes
+    Given the consumer MFE passes error properties:
       | field       | error_message               |
       | amount      | Nominal minimal Rp 10.000   |
       | description | Keterangan wajib diisi      |
-    Then Field nominal memiliki atribut aria-invalid bernilai "true"
-    And Muncul pesan kesalahan "Nominal minimal Rp 10.000" pada helper text
-    And Field keterangan memiliki atribut aria-invalid bernilai "true"
-    And Muncul pesan kesalahan "Keterangan wajib diisi" pada helper text
+    Then the amount field should have aria-invalid attribute set to "true"
+    And an error helper text "Nominal minimal Rp 10.000" should be displayed
+    And the description field should have aria-invalid attribute set to "true"
+    And an error helper text "Keterangan wajib diisi" should be displayed
 
   @Extensibility @Slots
-  Scenario: TC-XRAY-005 - Injeksi komponen kustom pada slot children dan footer
-    When Consumer menyisipkan elemen "Pilih Rekening Sumber" pada slot children
-    And Consumer menyisipkan elemen "Catatan Keamanan Transaksi" pada slot footer
-    Then Elemen children muncul di atas input nominal
-    And Elemen footer muncul di bawah tombol submit
+  Scenario: TC-XRAY-005 - Custom component injection into children and footer slots
+    When the consumer injects "Pilih Rekening Sumber" element into children slot
+    And the consumer injects "Catatan Keamanan Transaksi" element into footer slot
+    Then the children slot element should be rendered above the amount field
+    And the footer slot element should be rendered below the submit button
 ```
 
 ---
