@@ -1,0 +1,93 @@
+# ====================================================================
+# Bank BRI GitLab CI Pipeline - BSI MFE Shared UI
+# Target Component: TransactionForm.tsx & TransactionForm.test.tsx
+# ====================================================================
+
+stages:
+  - validate
+  - test
+  - sonarqube
+  - notify-jira
+
+variables:
+  NODE_ENV: "test"
+  SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"
+  GIT_DEPTH: "0"
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+    - .sonar/cache
+
+# Stage 1: Validate TypeScript & Dependencies
+lint_and_typecheck:
+  stage: validate
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run type-check
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Stage 2: Execute Jest & Generate Coverage
+unit_testing:
+  stage: test
+  image: node:20-alpine
+  script:
+    - npm ci
+    - npm run test:coverage
+  artifacts:
+    name: "coverage-report-${CI_COMMIT_SHORT_SHA}"
+    expire_in: 7 days
+    paths:
+      - coverage/
+  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Stage 3: SonarQube Scanner on-premise BRI
+sonarqube_scan:
+  stage: sonarqube
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: [""]
+  dependencies:
+    - unit_testing
+  script:
+    - sonar-scanner
+        -Dsonar.host.url="${SONAR_HOST_URL}"
+        -Dsonar.token="${SONAR_TOKEN}"
+        -Dsonar.qualitygate.wait=true
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Stage 4: Automate Jira Transition when MR is Merged
+jira_update_to_ready_for_test:
+  stage: notify-jira
+  image: curlimages/curl:latest
+  script:
+    - echo "Updating Jira ticket status to Ready for Test..."
+    - |
+      JIRA_ISSUE_KEY=$(echo "${CI_COMMIT_REF_NAME}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+      if [ -n "$JIRA_ISSUE_KEY" ]; then
+        curl -s -X POST \
+          -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" \
+          -H "Content-Type: application/json" \
+          --data '{"transition": {"id": "41"}}' \
+          "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+        echo "Jira issue ${JIRA_ISSUE_KEY} transitioned to Ready for Test."
+      else
+        echo "No Jira issue key detected in branch ${CI_COMMIT_REF_NAME}."
+      fi
+  only:
+    - main
+    - develop
+  when: on_success
+

@@ -1,0 +1,73 @@
+name: "CI Pipeline: SonarQube Quality Gate & Unit Test Coverage"
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.config.js'
+      - 'tsconfig.json'
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  code-quality-and-test:
+    name: "Jest Test & SonarQube Quality Gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: "1. Checkout Source Code"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "2. Setup Node.js Environment"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: "3. Install Dependencies (Clean Install)"
+        run: npm ci
+
+      - name: "4. TypeScript Type-Checking"
+        run: npm run type-check
+
+      - name: "5. Execute Jest Unit Tests with Coverage"
+        run: npm run test:coverage
+        env:
+          CI: true
+
+      - name: "6. Verify LCOV Coverage Report Exists"
+        run: |
+          if [ ! -f coverage/lcov.info ]; then
+            echo "ERROR: coverage/lcov.info not found! Jest failed to generate coverage."
+            exit 1
+          fi
+          echo "LCOV coverage report verified successfully."
+
+      - name: "7. SonarQube Scan"
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
+            -Dsonar.pullrequest.branch=${{ github.head_ref }}
+            -Dsonar.pullrequest.base=${{ github.base_ref }}
+
+      - name: "8. SonarQube Quality Gate Check"
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
