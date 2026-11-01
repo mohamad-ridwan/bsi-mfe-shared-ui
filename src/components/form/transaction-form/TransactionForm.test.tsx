@@ -140,6 +140,33 @@ describe('TransactionForm Component', () => {
     expect(amountInput).toBeInTheDocument();
   });
 
+  // TC-07c: Validasi batas nominal (maksimum 100 Miliar dan non-negatif/invalid)
+  it('TC-07c: should not trigger callbacks when amount exceeds limit or is negative', () => {
+    const handleAmountChange = jest.fn();
+    const handleChange = jest.fn();
+
+    render(
+      <TransactionForm
+        {...defaultProps}
+        values={{ amount: '', description: '' }}
+        onAmountChange={handleAmountChange}
+        onChange={handleChange}
+      />,
+    );
+
+    const amountInput = screen.getByLabelText(/Nominal/i);
+
+    // 1. Nominal melebihi batas 100 Miliar
+    fireEvent.change(amountInput, { target: { value: '100000000001' } });
+    expect(handleAmountChange).not.toHaveBeenCalled();
+    expect(handleChange).not.toHaveBeenCalled();
+
+    // 2. Nominal negatif
+    fireEvent.change(amountInput, { target: { value: '-5000' } });
+    expect(handleAmountChange).not.toHaveBeenCalled();
+    expect(handleChange).not.toHaveBeenCalled();
+  });
+
   // TC-08: Pengosongan nilai nominal transaksi
   it('TC-08: should trigger onAmountChange with 0 and onChange with 0 when amount input is cleared', async () => {
     const user = userEvent.setup();
