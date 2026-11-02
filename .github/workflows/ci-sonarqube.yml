@@ -58,11 +58,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.pullrequest.key=${{ github.event.pull_request.number }}
-            -Dsonar.pullrequest.branch=${{ github.head_ref }}
-            -Dsonar.pullrequest.base=${{ github.base_ref }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "8. SonarQube Quality Gate Check"
         uses: SonarSource/sonarqube-quality-gate-action@v1
@@ -70,4 +66,80 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: "9. Auto-Transition Jira Ticket to IN REVIEW"
+        if: success() && github.event_name == 'pull_request'
+        run: |
+          echo "Quality Gate PASSED. Preparing to update Jira ticket to IN REVIEW..."
+          # Ambil Issue Key dari nama branch PR atau judul PR (misal: BSI-9)
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ]; then
+            echo "No Jira issue key found in branch/PR. Skipping Jira update."
+            exit 0
+          fi
+
+          if [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "WARNING: JIRA_BASE_URL or JIRA_API_BASIC_AUTH secrets not set in GitHub. Skipping Jira transition."
+            exit 0
+          fi
+
+          echo "Resolving Transition ID for 'In Review' on issue $JIRA_ISSUE_KEY..."
+          TRANSITIONS_JSON=$(curl -s \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+
+          TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Review|Review|Code Review"; "i")) | .id' | head -n 1)
+
+          if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+            echo "Found Transition ID: $TRANSITION_ID. Updating $JIRA_ISSUE_KEY to IN REVIEW..."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+            echo "Jira issue $JIRA_ISSUE_KEY successfully transitioned to IN REVIEW."
+          else
+            echo "WARNING: Could not find transition ID for 'In Review' in Jira workflow."
+          fi
+
+      - name: "10. Auto-Rollback Jira Ticket to IN PROGRESS on Failure"
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          echo "Pipeline or Quality Gate FAILED. Returning Jira ticket to IN PROGRESS..."
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ] || [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "Missing required Jira configuration. Skipping rollback."
+            exit 0
+          fi
+
+          echo "Resolving Transition ID for 'In Progress' on issue $JIRA_ISSUE_KEY..."
+          TRANSITIONS_JSON=$(curl -s \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+
+          TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Progress|Progress|Reopen|Back to Development"; "i")) | .id' | head -n 1)
+
+          if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+            echo "Transitioning $JIRA_ISSUE_KEY back to IN PROGRESS (Transition ID: $TRANSITION_ID)..."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+            
+            # Tambahkan komentar otomatis agar FE Dev tahu kenapa tiketnya balik ke In Progress
+            COMMENT_BODY="🤖 *[Automated CI/CD Alert]*\nPull Request check GAGAL (Unit Test / SonarQube Quality Gate merah).\nStatus tiket otomatis dikembalikan ke *IN PROGRESS*. Silakan periksa log pipeline di GitHub Actions dan perbaiki kode sebelum diajukan kembali ke QC Service."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$COMMENT_BODY\"}]}]}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/comment"
+            echo "Jira issue $JIRA_ISSUE_KEY successfully rolled back to IN PROGRESS."
+          else
+            echo "WARNING: Could not find transition ID for 'In Progress' in Jira workflow."
+          fi
 

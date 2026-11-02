@@ -50,7 +50,7 @@ unit_testing:
     - main
     - develop
 
-# Stage 3: SonarQube Scanner on-premise BRI
+# Stage 3: SonarQube Scanner (Mode Pull Request / Merge Request & Target Branch)
 sonarqube_scan:
   stage: sonarqube
   image:
@@ -59,32 +59,93 @@ sonarqube_scan:
   dependencies:
     - unit_testing
   script:
-    - sonar-scanner
-        -Dsonar.host.url="${SONAR_HOST_URL}"
-        -Dsonar.token="${SONAR_TOKEN}"
-        -Dsonar.qualitygate.wait=true
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ]; then
+        echo "Running SonarQube scan for Merge Request !${CI_MERGE_REQUEST_IID} (Source: ${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME} -> Target: ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME})..."
+        sonar-scanner \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.pullrequest.key="${CI_MERGE_REQUEST_IID}" \
+          -Dsonar.pullrequest.branch="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" \
+          -Dsonar.pullrequest.base="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" \
+          -Dsonar.qualitygate.wait=true
+      else
+        TARGET_BRANCH="${CI_COMMIT_BRANCH:-$CI_DEFAULT_BRANCH}"
+        echo "Running SonarQube scan for branch: ${TARGET_BRANCH}..."
+        sonar-scanner \
+          -Dsonar.host.url="${SONAR_HOST_URL}" \
+          -Dsonar.token="${SONAR_TOKEN}" \
+          -Dsonar.branch.name="${TARGET_BRANCH}" \
+          -Dsonar.qualitygate.wait=true
+      fi
   only:
     - merge_requests
     - main
     - develop
 
-# Stage 4: Automate Jira Transition when MR is Merged
-jira_update_to_ready_for_test:
+# Stage 4: Automate Jira Transition to IN REVIEW when Merge Request (MR) is Opened
+jira_update_to_in_review:
   stage: notify-jira
-  image: curlimages/curl:latest
+  image: badouralix/curl-jq:latest
   script:
-    - echo "Updating Jira ticket status to Ready for Test..."
+    - echo "Updating Jira ticket status to IN REVIEW for Merge Request..."
+    - |
+      JIRA_ISSUE_KEY=$(echo "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+      if [ -z "$JIRA_ISSUE_KEY" ]; then
+        JIRA_ISSUE_KEY=$(echo "${CI_COMMIT_REF_NAME}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+      fi
+
+      if [ -n "$JIRA_ISSUE_KEY" ]; then
+        echo "Auto-resolving transition ID for In Review on $JIRA_ISSUE_KEY..."
+        TRANSITIONS_JSON=$(curl -s -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" -H "Content-Type: application/json" "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+        TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Review|Review|Code Review"; "i")) | .id' | head -n 1)
+
+        if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+          echo "Found Transition ID: $TRANSITION_ID. Transitioning to IN REVIEW..."
+          PAYLOAD="{\"transition\":{\"id\":\"$TRANSITION_ID\"}}"
+          curl -s -X POST \
+            -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+          echo "Jira issue $JIRA_ISSUE_KEY transitioned to IN REVIEW."
+        else
+          echo "WARNING: Could not find transition ID for In Review."
+        fi
+      else
+        echo "No Jira issue key detected in branch."
+      fi
+  only:
+    - merge_requests
+  when: on_success
+
+# Stage 5: Automate Jira Transition to IN TESTING when MR is Merged
+jira_update_to_in_testing:
+  stage: notify-jira
+  image: badouralix/curl-jq:latest
+  script:
+    - echo "Updating Jira ticket status to IN TESTING..."
     - |
       JIRA_ISSUE_KEY=$(echo "${CI_COMMIT_REF_NAME}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
       if [ -n "$JIRA_ISSUE_KEY" ]; then
-        curl -s -X POST \
-          -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" \
-          -H "Content-Type: application/json" \
-          --data '{"transition": {"id": "41"}}' \
-          "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
-        echo "Jira issue ${JIRA_ISSUE_KEY} transitioned to Ready for Test."
+        echo "Auto-resolving transition ID for IN TESTING on $JIRA_ISSUE_KEY..."
+        TRANSITIONS_JSON=$(curl -s -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" -H "Content-Type: application/json" "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+        TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("^In Testing$|Testing"; "i")) | .id' | head -n 1)
+
+        if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+          echo "Found Transition ID: $TRANSITION_ID. Transitioning to IN TESTING..."
+          PAYLOAD="{\"transition\":{\"id\":\"$TRANSITION_ID\"}}"
+          curl -s -X POST \
+            -H "Authorization: Basic ${JIRA_API_BASIC_AUTH}" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+          echo "Jira issue $JIRA_ISSUE_KEY successfully transitioned to IN TESTING."
+        else
+          echo "WARNING: Could not find transition ID for IN TESTING."
+        fi
       else
-        echo "No Jira issue key detected in branch ${CI_COMMIT_REF_NAME}."
+        echo "No Jira issue key detected in branch $CI_COMMIT_REF_NAME."
       fi
   only:
     - main
