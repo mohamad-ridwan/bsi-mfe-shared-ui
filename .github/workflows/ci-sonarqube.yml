@@ -104,3 +104,42 @@ jobs:
             echo "WARNING: Could not find transition ID for 'In Review' in Jira workflow."
           fi
 
+      - name: "10. Auto-Rollback Jira Ticket to IN PROGRESS on Failure"
+        if: failure() && github.event_name == 'pull_request'
+        run: |
+          echo "Pipeline or Quality Gate FAILED. Returning Jira ticket to IN PROGRESS..."
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ] || [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "Missing required Jira configuration. Skipping rollback."
+            exit 0
+          fi
+
+          echo "Resolving Transition ID for 'In Progress' on issue $JIRA_ISSUE_KEY..."
+          TRANSITIONS_JSON=$(curl -s \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+
+          TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Progress|Progress|Reopen|Back to Development"; "i")) | .id' | head -n 1)
+
+          if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+            echo "Transitioning $JIRA_ISSUE_KEY back to IN PROGRESS (Transition ID: $TRANSITION_ID)..."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+            
+            # Tambahkan komentar otomatis agar FE Dev tahu kenapa tiketnya balik ke In Progress
+            COMMENT_BODY="🤖 *[Automated CI/CD Alert]*\nPull Request check GAGAL (Unit Test / SonarQube Quality Gate merah).\nStatus tiket otomatis dikembalikan ke *IN PROGRESS*. Silakan periksa log pipeline di GitHub Actions dan perbaiki kode sebelum diajukan kembali ke QC Service."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$COMMENT_BODY\"}]}]}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/comment"
+            echo "Jira issue $JIRA_ISSUE_KEY successfully rolled back to IN PROGRESS."
+          else
+            echo "WARNING: Could not find transition ID for 'In Progress' in Jira workflow."
+          fi
+
