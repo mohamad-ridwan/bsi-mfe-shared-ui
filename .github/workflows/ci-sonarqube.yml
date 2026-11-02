@@ -67,3 +67,40 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
+      - name: "9. Auto-Transition Jira Ticket to IN REVIEW"
+        if: success() && github.event_name == 'pull_request'
+        run: |
+          echo "Quality Gate PASSED. Preparing to update Jira ticket to IN REVIEW..."
+          # Ambil Issue Key dari nama branch PR atau judul PR (misal: BSI-9)
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ]; then
+            echo "No Jira issue key found in branch/PR. Skipping Jira update."
+            exit 0
+          fi
+
+          if [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "WARNING: JIRA_BASE_URL or JIRA_API_BASIC_AUTH secrets not set in GitHub. Skipping Jira transition."
+            exit 0
+          fi
+
+          echo "Resolving Transition ID for 'In Review' on issue $JIRA_ISSUE_KEY..."
+          TRANSITIONS_JSON=$(curl -s \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+
+          TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Review|Review|Code Review"; "i")) | .id' | head -n 1)
+
+          if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+            echo "Found Transition ID: $TRANSITION_ID. Updating $JIRA_ISSUE_KEY to IN REVIEW..."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+            echo "Jira issue $JIRA_ISSUE_KEY successfully transitioned to IN REVIEW."
+          else
+            echo "WARNING: Could not find transition ID for 'In Review' in Jira workflow."
+          fi
+
