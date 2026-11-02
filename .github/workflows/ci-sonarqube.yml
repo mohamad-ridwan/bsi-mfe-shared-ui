@@ -5,12 +5,6 @@ on:
     branches:
       - main
       - develop
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'jest.config.js'
-      - 'tsconfig.json'
   push:
     branches:
       - main
@@ -141,5 +135,49 @@ jobs:
             echo "Jira issue $JIRA_ISSUE_KEY successfully rolled back to IN PROGRESS."
           else
             echo "WARNING: Could not find transition ID for 'In Progress' in Jira workflow."
+          fi
+
+      - name: "11. Auto-Transition Jira Ticket to IN TESTING on Merge"
+        if: success() && github.event_name == 'push' && github.ref_name == 'develop'
+        run: |
+          echo "PR has been merged into develop. Transitioning Jira ticket to IN TESTING..."
+          # Ekstrak Issue Key dari pesan commit terakhir (misal: Merge pull request #1 ... [BSI-9] atau dari commit log)
+          JIRA_ISSUE_KEY=$(git log -1 --pretty=%B | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ]; then
+            echo "No Jira issue key detected in latest merge commit. Skipping Jira transition."
+            exit 0
+          fi
+
+          if [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "Missing required Jira configuration. Skipping transition."
+            exit 0
+          fi
+
+          echo "Resolving Transition ID for 'In Testing' or 'Ready for Test' on $JIRA_ISSUE_KEY..."
+          TRANSITIONS_JSON=$(curl -s \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions")
+
+          TRANSITION_ID=$(echo "$TRANSITIONS_JSON" | jq -r '.transitions[] | select(.name | test("In Testing|Testing|Ready for Test"; "i")) | .id' | head -n 1)
+
+          if [ -n "$TRANSITION_ID" ] && [ "$TRANSITION_ID" != "null" ]; then
+            echo "Found Transition ID: $TRANSITION_ID. Updating $JIRA_ISSUE_KEY to IN TESTING..."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"transition\":{\"id\":\"$TRANSITION_ID\"}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/transitions"
+            
+            COMMENT_BODY="🚀 *[Automated CI/CD Notification]*\nPull Request telah berhasil di-merge ke branch *develop* dengan SonarQube Quality Gate PASSED (Coverage 100%).\nStatus tiket otomatis dialihkan ke *IN TESTING*. Tim QC Service dipersilakan memulai pengujian fungsional komponen."
+            curl -s -X POST \
+              -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+              -H "Content-Type: application/json" \
+              -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$COMMENT_BODY\"}]}]}}" \
+              "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/comment"
+            echo "Jira issue $JIRA_ISSUE_KEY successfully transitioned to IN TESTING."
+          else
+            echo "WARNING: Could not find transition ID for 'In Testing' in Jira workflow."
           fi
 
