@@ -5,12 +5,6 @@ on:
     branches:
       - main
       - develop
-    paths:
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'jest.config.js'
-      - 'tsconfig.json'
   push:
     branches:
       - main
