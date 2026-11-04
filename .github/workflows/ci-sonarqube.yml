@@ -34,10 +34,21 @@ jobs:
       - name: "4. TypeScript Type-Checking"
         run: npm run type-check
 
-      - name: "5. Execute Jest Unit Tests with Coverage"
-        run: npm run test:coverage
+      - name: "5. Execute Jest Unit Tests with Coverage & JSON Report"
+        run: npx jest --coverage --json --outputFile=jest-results.json
         env:
           CI: true
+
+      - name: "5b. Auto-Update Jira Smart Checklist (AC Verification)"
+        if: success()
+        run: |
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+          if [ -n "$JIRA_ISSUE_KEY" ]; then
+            export JIRA_ISSUE_KEY="$JIRA_ISSUE_KEY"
+            export JIRA_BASE_URL="${{ secrets.JIRA_BASE_URL }}"
+            export JIRA_API_BASIC_AUTH="${{ secrets.JIRA_API_BASIC_AUTH }}"
+            node scripts/update-jira-checklist.js
+          fi
 
       - name: "6. Verify LCOV Coverage Report Exists"
         run: |
