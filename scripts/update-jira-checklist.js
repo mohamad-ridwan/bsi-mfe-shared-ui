@@ -226,6 +226,43 @@ async function updateSmartChecklist() {
     process.exit(1);
   }
 
+  // Cek apakah custom field 'Checklists' tersedia di Jira Issue
+  console.log('Mengecek field Jira untuk synchronizing ke custom field Checklists...');
+  try {
+    const issueRes = await jiraRequest(`/rest/api/2/issue/${jiraIssueKey}?fields=*all`, 'GET');
+    if (issueRes.statusCode === 200) {
+      const issueData = JSON.parse(issueRes.body);
+      const fields = issueData.fields || {};
+
+      // Cari custom field yang bernilai markdown checklist atau bernama Checklists
+      let checklistCustomFieldId = null;
+      for (const [key, val] of Object.entries(fields)) {
+        if (key.startsWith('customfield_') && typeof val === 'string' && val.includes('Acceptance Criteria Verification')) {
+          checklistCustomFieldId = key;
+          break;
+        }
+      }
+
+      if (checklistCustomFieldId) {
+        console.log(`Menemukan custom field Checklists (${checklistCustomFieldId}), melakukan sync langsung...`);
+        const cfUpdateRes = await jiraRequest(`/rest/api/2/issue/${jiraIssueKey}`, 'PUT', {
+          fields: {
+            [checklistCustomFieldId]: updatedChecklist,
+          },
+        });
+        if (cfUpdateRes.statusCode === 204 || cfUpdateRes.statusCode === 200) {
+          console.log(`✅ Berhasil sync konten ke custom field ${checklistCustomFieldId}!`);
+        } else {
+          console.log(`ℹ️ Respon custom field sync: ${cfUpdateRes.statusCode} - ${cfUpdateRes.body}`);
+        }
+      } else {
+        console.log('ℹ️ Custom field Checklists tidak ditemukan atau checklist disimpan via App Forge Storage.');
+      }
+    }
+  } catch (err) {
+    console.log('ℹ️ Sync custom field dilewati:', err.message);
+  }
+
   // Verifikasi ulang (Audit Trail)
   console.log('Melakukan verifikasi ulang langsung ke API JIRA...');
   const verifyRes = await jiraRequest(
