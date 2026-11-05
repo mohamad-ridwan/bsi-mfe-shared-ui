@@ -171,18 +171,17 @@ async function updateSmartChecklist() {
   console.log(`============================================================`);
 
   // 1. Ambil daftar custom fields di instance Jira untuk mendeteksi 'Checklists'
-  console.log(`Memeriksa konfigurasi Custom Field di JIRA (/rest/api/2/field)...`);
+  console.log(`Memeriksa konfigurasi Custom Field di JIRA (/rest/api/3/field)...`);
   let checklistCustomFieldId = null;
   let checklistCustomFieldName = null;
 
   try {
-    const fieldsRes = await jiraRequest('/rest/api/2/field', 'GET');
+    const fieldsRes = await jiraRequest('/rest/api/3/field', 'GET');
     if (fieldsRes.statusCode === 200) {
       const allFields = JSON.parse(fieldsRes.body);
       const matchedField = allFields.find((f) => {
-        const nameMatch = f.name && f.name.toLowerCase() === 'checklists';
-        const schemaMatch = f.schema && f.schema.custom && f.schema.custom.includes('railsware');
-        return nameMatch || schemaMatch;
+        const name = (f.name || '').toLowerCase();
+        return name === 'checklists' || name === 'checklist';
       });
 
       if (matchedField) {
@@ -190,10 +189,12 @@ async function updateSmartChecklist() {
         checklistCustomFieldName = matchedField.name;
         console.log(`🎯 Custom Field Checklists terdeteksi: '${checklistCustomFieldName}' (ID: ${checklistCustomFieldId})`);
       } else {
-        console.log(`ℹ️ Custom Field 'Checklists' belum dibuat di Jira Admin.`);
+        console.log(`ℹ️ Custom Field 'Checklists' belum terdeteksi di /rest/api/3/field.`);
+        const customOnly = allFields.filter(f => f.custom).map(f => `${f.name} (${f.id})`);
+        console.log(`Daftar Custom Fields yang ada: ${customOnly.slice(0, 10).join(', ')}...`);
       }
     } else {
-      console.warn(`⚠️ Gagal membaca /rest/api/2/field (Status: ${fieldsRes.statusCode}). Melanjutkan ke Entity Property...`);
+      console.warn(`⚠️ Gagal membaca /rest/api/3/field (Status: ${fieldsRes.statusCode}). Melanjutkan ke Entity Property...`);
     }
   } catch (err) {
     console.warn(`⚠️ Error saat membaca fields: ${err.message}`);
