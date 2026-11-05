@@ -1,7 +1,7 @@
 /**
- * Script Otomasi: Update Smart Checklist di JIRA berdasarkan Hasil Unit Test Jest
+ * Script Otomasi: Update Smart Checklist di JIRA berdasarkan Granular Sub-Criteria Unit Test
  * BSI MFE Shared UI - Bank BRI / BSI Agile SDLC Ecosystem
- * Standar QC Service: Strict Formatting & Real-Time Verification
+ * Standar QC Service: Sub-Details Traceability & Strict Verification
  */
 
 const fs = require('fs');
@@ -17,59 +17,111 @@ if (!fs.existsSync(resultsPath)) {
 
 const jestResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
 
-// 2. Evaluasi Status Kelulusan Masing-masing Acceptance Criteria
-const acStatus = {
-  'AC-01': true,
-  'AC-02': true,
-  'AC-03': true,
-  'AC-04': true,
-  'AC-05': true,
+// 2. Definisi Granular Sub-Kriteria Acceptance Criteria
+// Title AC HANYA boleh DONE jika seluruh sub-kriteria di bawahnya lulus 100%!
+const acSubCriteria = {
+  'AC-01': {
+    title: 'Validasi Nominal',
+    subDetails: {
+      'AC-01.1 (Boundary & Range Rp 10.000 - 100B)': { testKeys: ['TC-07', 'TC-07c'], passed: false, tested: false },
+      'AC-01.2 (Zero/Empty string representation)': { testKeys: ['TC-02', 'TC-08'], passed: false, tested: false },
+    },
+    overallPassed: false,
+  },
+  'AC-02': {
+    title: 'Proteksi Idempotency & Double Submission',
+    subDetails: {
+      'AC-02.1 (Spinner & Form Disabled during Loading)': { testKeys: ['TC-12'], passed: false, tested: false },
+      'AC-02.2 (Prevent Double Submit Callback)': { testKeys: ['TC-12', 'TC-13'], passed: false, tested: false },
+    },
+    overallPassed: false,
+  },
+  'AC-03': {
+    title: 'Keterangan Transaksi & Sanitasi',
+    subDetails: {
+      'AC-03.1 (Multiline Text Description up to 255 chars)': { testKeys: ['TC-09', 'TC-09b'], passed: false, tested: false },
+    },
+    overallPassed: false,
+  },
+  'AC-04': {
+    title: 'Slotting Inversion of Control',
+    subDetails: {
+      'AC-04.1 (Custom Children Slot above amount)': { testKeys: ['TC-05'], passed: false, tested: false },
+      'AC-04.2 (Custom Footer Slot below submit)': { testKeys: ['TC-06'], passed: false, tested: false },
+    },
+    overallPassed: false,
+  },
+  'AC-05': {
+    title: 'Dynamic Error Presentation',
+    subDetails: {
+      'AC-05.1 (Aria-invalid & Error Helper Text rendering)': { testKeys: ['TC-10'], passed: false, tested: false },
+    },
+    overallPassed: false,
+  },
 };
 
-const acFoundInTests = {
-  'AC-01': false,
-  'AC-02': false,
-  'AC-03': false,
-  'AC-04': false,
-  'AC-05': false,
-};
+// Kumpulkan hasil eksekusi test per test case ID (TC-xx)
+const testCaseResults = {};
 
 jestResults.testResults.forEach((suite) => {
   suite.assertionResults.forEach((test) => {
     const title = test.title || '';
-    const ancestor = (test.ancestorTitles || []).join(' ');
-    const fullText = `${ancestor} ${title}`;
-
-    ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
-      if (fullText.includes(acKey)) {
-        acFoundInTests[acKey] = true;
-        if (test.status !== 'passed') {
-          acStatus[acKey] = false;
-        }
-      }
-    });
+    const match = title.match(/TC-\d+[a-z]?/);
+    if (match) {
+      const tcId = match[0];
+      testCaseResults[tcId] = test.status === 'passed';
+    }
   });
 });
 
-console.log('Evaluasi Unit Test terhadap Acceptance Criteria:');
-console.table(
-  Object.keys(acStatus).map((key) => ({
-    'Acceptance Criteria': key,
-    'Ditemukan di Test': acFoundInTests[key] ? '✅ YA' : '❌ TIDAK',
-    'Status Kelulusan': acStatus[key] ? '✅ PASSED' : '❌ FAILED',
-  }))
-);
+console.log('--- REKAPITULASI HASIL EKSEKUSI UNIT TEST PER TEST CASE ---');
+console.table(testCaseResults);
 
-// Pastikan semua AC ada di unit test dan semuanya passed
-const missingInTests = Object.keys(acFoundInTests).filter((k) => !acFoundInTests[k]);
-if (missingInTests.length > 0) {
-  console.error(`❌ FATAL ERROR: AC berikut tidak ditemukan dalam skenario Jest: ${missingInTests.join(', ')}`);
-  process.exit(1);
-}
+// Evaluasi sub-kriteria
+let allSubCriteriaPassed = true;
 
-const failedTests = Object.keys(acStatus).filter((k) => !acStatus[k]);
-if (failedTests.length > 0) {
-  console.error(`❌ FATAL ERROR: AC berikut gagal dalam unit test: ${failedTests.join(', ')}`);
+Object.keys(acSubCriteria).forEach((acKey) => {
+  const ac = acSubCriteria[acKey];
+  let acSubAllOk = true;
+
+  Object.keys(ac.subDetails).forEach((subKey) => {
+    const sub = ac.subDetails[subKey];
+    // Pastikan seluruh testKeys yang dipetakan bernilai passed
+    const requiredTestsPassed = sub.testKeys.every((tc) => testCaseResults[tc] === true);
+    const requiredTestsExecuted = sub.testKeys.every((tc) => tc in testCaseResults);
+
+    sub.tested = requiredTestsExecuted;
+    sub.passed = requiredTestsPassed;
+
+    if (!sub.passed) {
+      acSubAllOk = false;
+      allSubCriteriaPassed = false;
+    }
+  });
+
+  ac.overallPassed = acSubAllOk;
+});
+
+console.log('\n--- EVALUASI GRANULAR SUB-KRITERIA ACCEPTANCE CRITERIA ---');
+const tableReport = [];
+Object.keys(acSubCriteria).forEach((acKey) => {
+  const ac = acSubCriteria[acKey];
+  Object.keys(ac.subDetails).forEach((subKey) => {
+    tableReport.push({
+      AC: acKey,
+      'Sub-Kriteria Bisnis': subKey,
+      'Test Cases': ac.subDetails[subKey].testKeys.join(', '),
+      'Teruji?': ac.subDetails[subKey].tested ? '✅ YA' : '❌ TIDAK',
+      'Status Sub': ac.subDetails[subKey].passed ? '✅ PASSED' : '❌ FAILED',
+      'Status Title AC': ac.overallPassed ? '🟢 DONE' : '🔴 TODO',
+    });
+  });
+});
+console.table(tableReport);
+
+if (!allSubCriteriaPassed) {
+  console.error('\n❌ FATAL ERROR: Terdapat sub-kriteria AC yang belum teruji atau gagal!');
+  console.error('Title AC tidak boleh diubah ke DONE jika sub-kriterianya belum lolos verifikasi.');
   process.exit(1);
 }
 
@@ -148,21 +200,16 @@ async function updateSmartChecklist() {
     process.exit(1);
   }
 
-  // Format Standar Smart Checklist untuk status DONE:
-  // Harus menggunakan format: `+ [ ] AC-xx:` atau `+ [x] AC-xx:`
-  // Sesuai panduan Smart Checklist:
-  // -- todo
-  // + done
+  // Lakukan transformasi: Title AC HANYA diubah ke `+ [ ]` jika ac.overallPassed bernilai true!
   let updatedChecklist = currentChecklist;
 
-  ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
-    // Pola 1: Mencocokkan `- AC-xx:` atau `+ AC-xx:` (tanpa kurung siku) -> ubah ke `+ [ ] AC-xx:`
-    const regexPlain = new RegExp(`^[\\+\\-]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
-    updatedChecklist = updatedChecklist.replace(regexPlain, '+ [ ] $1');
-
-    // Pola 2: Mencocokkan `- [ ] AC-xx:` atau `- [x] AC-xx:` -> ubah ke `+ [ ] AC-xx:`
-    const regexBracket = new RegExp(`^[\\+\\-]\\s*\\[[ xX]?\\]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
-    updatedChecklist = updatedChecklist.replace(regexBracket, '+ [ ] $1');
+  Object.keys(acSubCriteria).forEach((acKey) => {
+    const ac = acSubCriteria[acKey];
+    if (ac.overallPassed) {
+      // Ubah `- [ ] AC-xx:` atau `+ [ ] AC-xx:` atau `- AC-xx:` -> `+ [ ] AC-xx:` (Done)
+      const regexAny = new RegExp(`^[\\+\\-]\\s*(\\[[ xX]?\\]\\s*)?(${acKey}[:\\s][^\\n]*)`, 'gm');
+      updatedChecklist = updatedChecklist.replace(regexAny, '+ [ ] $2');
+    }
   });
 
   console.log(`Menyimpan pembaruan Smart Checklist ke JIRA (${jiraIssueKey})...`);
@@ -178,7 +225,7 @@ async function updateSmartChecklist() {
     process.exit(1);
   }
 
-  // VERIFIKASI KEMBALI (Audit Trail): Pastikan JIRA benar-benar menyimpan status Done
+  // Verifikasi ulang (Audit Trail)
   console.log('Melakukan verifikasi ulang langsung ke API JIRA...');
   const verifyRes = await jiraRequest(
     `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
@@ -186,19 +233,19 @@ async function updateSmartChecklist() {
   );
 
   const verifyVal = JSON.parse(verifyRes.body).value || '';
-  const notDone = ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].filter((acKey) => {
+  const notDone = Object.keys(acSubCriteria).filter((acKey) => {
     const isDone = new RegExp(`\\+\\s*\\[?\\s*\\w*\\s*\\]?\\s*${acKey}`, 'm').test(verifyVal);
     return !isDone;
   });
 
   if (notDone.length > 0) {
     console.error(`❌ FATAL VERIFICATION ERROR: Item berikut belum terdaftar sebagai DONE di JIRA: ${notDone.join(', ')}`);
-    console.error('Konten JIRA saat ini:\n', verifyVal);
     process.exit(1);
   }
 
-  console.log(`\n🎉 VERIFIKASI BERHASIL 100%: Smart Checklist tiket ${jiraIssueKey} telah terkonfirmasi DONE di JIRA!`);
-  console.log('Semua Acceptance Criteria (AC-01 s/d AC-05) kini resmi berstatus DONE (Hijau) di Smart Checklist JIRA.');
+  console.log(`\n🎉 VERIFIKASI SUB-DETAILS BERHASIL 100%:`);
+  console.log(`Seluruh sub-detail teknis untuk AC-01 s/d AC-05 terbukti lulus pengujian.`);
+  console.log(`Smart Checklist tiket ${jiraIssueKey} resmi berstatus DONE di JIRA!`);
 }
 
 updateSmartChecklist().catch((err) => {
