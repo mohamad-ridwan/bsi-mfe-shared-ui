@@ -206,9 +206,10 @@ async function updateSmartChecklist() {
   Object.keys(acSubCriteria).forEach((acKey) => {
     const ac = acSubCriteria[acKey];
     if (ac.overallPassed) {
-      // Ubah `- [ ] AC-xx:` atau `+ [ ] AC-xx:` atau `- AC-xx:` -> `+ [ ] AC-xx:` (Done)
-      const regexAny = new RegExp(`^[\\+\\-]\\s*(\\[[ xX]?\\]\\s*)?(${acKey}[:\\s][^\\n]*)`, 'gm');
-      updatedChecklist = updatedChecklist.replace(regexAny, '+ [ ] $2');
+      // Ubah `- AC-xx:` atau `- [ ] AC-xx:` atau `+ [ ] AC-xx:` -> `+ [Done] AC-xx:` atau `+ AC-xx:`
+      // Format resmi Smart Checklist untuk status Done hijau adalah `+ ` atau `+ [Done] `
+      const regexAny = new RegExp(`^[\\+\\-]\\s*(\\[[^\\]]*\\]\\s*)?(${acKey}[:\\s][^\\n]*)`, 'gm');
+      updatedChecklist = updatedChecklist.replace(regexAny, '+ [Done] $2');
     }
   });
 
@@ -234,7 +235,8 @@ async function updateSmartChecklist() {
 
   const verifyVal = JSON.parse(verifyRes.body).value || '';
   const notDone = Object.keys(acSubCriteria).filter((acKey) => {
-    const isDone = new RegExp(`\\+\\s*\\[?\\s*\\w*\\s*\\]?\\s*${acKey}`, 'm').test(verifyVal);
+    // Memastikan item diawali dengan `+` (Done di Smart Checklist)
+    const isDone = new RegExp(`^\\+\\s*(\\[[^\\]]*\\]\\s*)?${acKey}`, 'm').test(verifyVal);
     return !isDone;
   });
 
