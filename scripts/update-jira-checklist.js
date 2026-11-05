@@ -171,16 +171,19 @@ async function updateSmartChecklist() {
   console.log(`============================================================`);
 
   // 1. Ambil daftar custom fields di instance Jira untuk mendeteksi 'Checklists'
-  console.log(`Memeriksa konfigurasi Custom Field di JIRA (/rest/api/3/field)...`);
+  console.log(`Memeriksa konfigurasi Custom Field di JIRA (/rest/api/3/field/search?type=custom)...`);
   let checklistCustomFieldId = null;
   let checklistCustomFieldName = null;
 
   try {
-    const fieldsRes = await jiraRequest('/rest/api/3/field', 'GET');
+    // Gunakan endpoint paginated resmi Jira Cloud v3 untuk mencari field Checklists
+    const fieldsRes = await jiraRequest('/rest/api/3/field/search?type=custom&maxResults=100', 'GET');
     if (fieldsRes.statusCode === 200) {
-      const allFields = JSON.parse(fieldsRes.body);
-      const matchedField = allFields.find((f) => {
-        const name = (f.name || '').toLowerCase();
+      const responseData = JSON.parse(fieldsRes.body);
+      const fieldsList = Array.isArray(responseData) ? responseData : (responseData.values || []);
+
+      const matchedField = fieldsList.find((f) => {
+        const name = (f.name || '').trim().toLowerCase();
         return name === 'checklists' || name === 'checklist';
       });
 
@@ -189,12 +192,12 @@ async function updateSmartChecklist() {
         checklistCustomFieldName = matchedField.name;
         console.log(`🎯 Custom Field Checklists terdeteksi: '${checklistCustomFieldName}' (ID: ${checklistCustomFieldId})`);
       } else {
-        console.log(`ℹ️ Custom Field 'Checklists' belum terdeteksi di /rest/api/3/field.`);
-        const customOnly = allFields.filter(f => f.custom).map(f => `${f.name} (${f.id})`);
-        console.log(`Daftar Custom Fields yang ada: ${customOnly.slice(0, 10).join(', ')}...`);
+        console.log(`ℹ️ Custom Field 'Checklists' belum terdeteksi di /rest/api/3/field/search.`);
+        const fieldNames = fieldsList.map((f) => `'${f.name}' (${f.id})`);
+        console.log(`Custom Fields yang ditemukan (${fieldNames.length}): ${fieldNames.slice(0, 15).join(', ')}...`);
       }
     } else {
-      console.warn(`⚠️ Gagal membaca /rest/api/3/field (Status: ${fieldsRes.statusCode}). Melanjutkan ke Entity Property...`);
+      console.warn(`⚠️ Gagal membaca /rest/api/3/field/search (Status: ${fieldsRes.statusCode}). Melanjutkan ke Entity Property...`);
     }
   } catch (err) {
     console.warn(`⚠️ Error saat membaca fields: ${err.message}`);
