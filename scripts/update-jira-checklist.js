@@ -170,7 +170,7 @@ async function updateSmartChecklist() {
   console.log(`Mengambil property Smart Checklist: ${SMART_CHECKLIST_PROP}...`);
 
   const getRes = await jiraRequest(
-    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    `/rest/api/2/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
     'GET'
   );
 
@@ -206,16 +206,16 @@ async function updateSmartChecklist() {
   Object.keys(acSubCriteria).forEach((acKey) => {
     const ac = acSubCriteria[acKey];
     if (ac.overallPassed) {
-      // Ubah `- AC-xx:` atau `- [ ] AC-xx:` atau `+ [ ] AC-xx:` -> `+ [Done] AC-xx:` atau `+ AC-xx:`
-      // Format resmi Smart Checklist untuk status Done hijau adalah `+ ` atau `+ [Done] `
+      // Hapus sembarang kurung siku `[ ]`, `[Done]`, atau `-` dan jadikan `+ AC-xx:`
+      // Format resmi Smart Checklist Cloud untuk Done adalah `+ AC-xx: ...`
       const regexAny = new RegExp(`^[\\+\\-]\\s*(\\[[^\\]]*\\]\\s*)?(${acKey}[:\\s][^\\n]*)`, 'gm');
-      updatedChecklist = updatedChecklist.replace(regexAny, '+ [Done] $2');
+      updatedChecklist = updatedChecklist.replace(regexAny, '+ $2');
     }
   });
 
   console.log(`Menyimpan pembaruan Smart Checklist ke JIRA (${jiraIssueKey})...`);
   const putRes = await jiraRequest(
-    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    `/rest/api/2/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
     'PUT',
     JSON.stringify(updatedChecklist)
   );
@@ -229,14 +229,14 @@ async function updateSmartChecklist() {
   // Verifikasi ulang (Audit Trail)
   console.log('Melakukan verifikasi ulang langsung ke API JIRA...');
   const verifyRes = await jiraRequest(
-    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    `/rest/api/2/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
     'GET'
   );
 
   const verifyVal = JSON.parse(verifyRes.body).value || '';
   const notDone = Object.keys(acSubCriteria).filter((acKey) => {
-    // Memastikan item diawali dengan `+` (Done di Smart Checklist)
-    const isDone = new RegExp(`^\\+\\s*(\\[[^\\]]*\\]\\s*)?${acKey}`, 'm').test(verifyVal);
+    // Memastikan item diawali dengan `+ ` (Done resmi di Smart Checklist)
+    const isDone = new RegExp(`^\\+\\s+${acKey}`, 'm').test(verifyVal);
     return !isDone;
   });
 
