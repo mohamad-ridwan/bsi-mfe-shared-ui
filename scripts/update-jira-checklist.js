@@ -1,21 +1,24 @@
 /**
  * Script Otomasi: Update Smart Checklist di JIRA berdasarkan Hasil Unit Test Jest
  * BSI MFE Shared UI - Bank BRI / BSI Agile SDLC Ecosystem
+ * Standar QC Service: Fail-Fast & Strict Traceability Validation
  */
 
 const fs = require('fs');
 const https = require('https');
 
-// 1. Baca hasil eksekusi Jest dari jest-results.json
+// 1. Validasi Keberadaan Hasil Jest
 const resultsPath = process.env.JEST_RESULTS_PATH || './jest-results.json';
 if (!fs.existsSync(resultsPath)) {
-  console.log('File jest-results.json tidak ditemukan. Melewati update Smart Checklist.');
-  process.exit(0);
+  console.error('❌ FATAL ERROR: File jest-results.json tidak ditemukan!');
+  console.error('Unit test harus dijalankan dengan flag --json --outputFile=jest-results.json sebelum step ini.');
+  process.exit(1);
 }
 
 const jestResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
 
-// 2. Evaluasi status kelulusan masing-masing Acceptance Criteria (AC-01 s/d AC-05)
+// 2. Evaluasi Status Kelulusan Masing-masing Acceptance Criteria
+// Inisialisasi: default true sampai terbukti ada yang fail
 const acStatus = {
   'AC-01': true,
   'AC-02': true,
@@ -24,7 +27,13 @@ const acStatus = {
   'AC-05': true,
 };
 
-let hasACTests = false;
+const acFoundInTests = {
+  'AC-01': false,
+  'AC-02': false,
+  'AC-03': false,
+  'AC-04': false,
+  'AC-05': false,
+};
 
 jestResults.testResults.forEach((suite) => {
   suite.assertionResults.forEach((test) => {
@@ -34,7 +43,7 @@ jestResults.testResults.forEach((suite) => {
 
     ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
       if (fullText.includes(acKey)) {
-        hasACTests = true;
+        acFoundInTests[acKey] = true;
         if (test.status !== 'passed') {
           acStatus[acKey] = false;
         }
@@ -43,21 +52,41 @@ jestResults.testResults.forEach((suite) => {
   });
 });
 
-console.log('Evaluasi Unit Test terhadap Acceptance Criteria (AC):', acStatus);
+console.log('Evaluasi Unit Test terhadap Acceptance Criteria:');
+console.table(
+  Object.keys(acStatus).map((key) => ({
+    'Acceptance Criteria': key,
+    'Ditemukan di Test': acFoundInTests[key] ? '✅ YA' : '❌ TIDAK',
+    'Status Kelulusan': acStatus[key] ? '✅ PASSED' : '❌ FAILED',
+  }))
+);
+
+// Pastikan semua AC ada di unit test dan semuanya passed
+const missingInTests = Object.keys(acFoundInTests).filter((k) => !acFoundInTests[k]);
+if (missingInTests.length > 0) {
+  console.error(`❌ FATAL ERROR: AC berikut tidak ditemukan dalam skenario Jest: ${missingInTests.join(', ')}`);
+  process.exit(1);
+}
+
+const failedTests = Object.keys(acStatus).filter((k) => !acStatus[k]);
+if (failedTests.length > 0) {
+  console.error(`❌ FATAL ERROR: AC berikut gagal dalam unit test: ${failedTests.join(', ')}`);
+  process.exit(1);
+}
 
 // 3. Konfigurasi JIRA
-const jiraBaseUrl = process.env.JIRA_BASE_URL; // misal: https://v1-software-dev.atlassian.net
+const jiraBaseUrl = process.env.JIRA_BASE_URL;
 const jiraAuth = process.env.JIRA_API_BASIC_AUTH;
 const jiraIssueKey = process.env.JIRA_ISSUE_KEY || 'BSI-9';
 
 if (!jiraBaseUrl || !jiraAuth) {
-  console.log('JIRA_BASE_URL atau JIRA_API_BASIC_AUTH tidak terdefinisi. Melewati pengiriman ke JIRA.');
-  process.exit(0);
+  console.error('❌ FATAL ERROR: JIRA_BASE_URL atau JIRA_API_BASIC_AUTH tidak terdefinisi di environment!');
+  process.exit(1);
 }
 
 const cleanBaseUrl = jiraBaseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+const SMART_CHECKLIST_PROP = 'com.railsware.SmartChecklist.checklist';
 
-// Helper request HTTPS
 function jiraRequest(path, method, data = null) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -74,9 +103,7 @@ function jiraRequest(path, method, data = null) {
     const req = https.request(options, (res) => {
       let body = '';
       res.on('data', (chunk) => (body += chunk));
-      res.on('end', () => {
-        resolve({ statusCode: res.statusCode, body });
-      });
+      res.on('end', () => resolve({ statusCode: res.statusCode, body }));
     });
 
     req.on('error', (err) => reject(err));
@@ -88,69 +115,80 @@ function jiraRequest(path, method, data = null) {
 }
 
 async function updateSmartChecklist() {
-  try {
-    console.log(`Mengambil Smart Checklist dari tiket ${jiraIssueKey}...`);
+  console.log(`\nMenghubungi JIRA untuk tiket ${jiraIssueKey}...`);
+  console.log(`Mengambil property Smart Checklist: ${SMART_CHECKLIST_PROP}...`);
 
-    // Coba ambil property checklist dari Jira issue
-    const getRes = await jiraRequest(`/rest/api/3/issue/${jiraIssueKey}/properties/checklist`, 'GET');
+  const getRes = await jiraRequest(
+    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    'GET'
+  );
 
-    let currentChecklist = '';
-    if (getRes.statusCode === 200) {
-      const parsed = JSON.parse(getRes.body);
-      currentChecklist = parsed.value || '';
-    } else {
-      // Fallback jika belum ada property, ambil dari customfield tiket
-      const issueRes = await jiraRequest(`/rest/api/3/issue/${jiraIssueKey}?fields=*all`, 'GET');
-      if (issueRes.statusCode === 200) {
-        const issueData = JSON.parse(issueRes.body);
-        for (const [key, val] of Object.entries(issueData.fields)) {
-          if (typeof val === 'string' && val.includes('AC-01')) {
-            currentChecklist = val;
-            break;
-          }
-        }
-      }
-    }
+  if (getRes.statusCode !== 200) {
+    console.error(`❌ FATAL ERROR (${getRes.statusCode}): Gagal mengambil Smart Checklist dari JIRA.`);
+    console.error('Detail Respons:', getRes.body);
+    console.error('Pastikan tiket memiliki Smart Checklist dan token JIRA memiliki hak akses.');
+    process.exit(1);
+  }
 
-    if (!currentChecklist) {
-      console.log('Checklist markdown tidak ditemukan di property. Menyusun checklist terstandarisasi...');
-      currentChecklist = [
-        '# 🎯 Acceptance Criteria Verification',
-        '- [ ] AC-01: Validasi Nominal',
-        '> Field Nominal hanya menerima angka positif dengan nilai minimum Rp 10.000 dan maksimum Rp 100.000.000.000 (100 Miliar)',
-        '> Bila nilai nominal bernilai 0 atau dikosongkan, input harus menampilkan string kosong, bukan angka 0 telanjang',
-        '- [ ] AC-02: Proteksi Idempotency & Double Submission',
-        '- [ ] AC-03: Keterangan Transaksi & Sanitasi',
-        '- [ ] AC-04: Slotting Inversion of Control',
-        '- [ ] AC-05: Dynamic Error Presentation',
-      ].join('\n');
-    }
+  const parsed = JSON.parse(getRes.body);
+  const currentChecklist = parsed.value;
 
-    // Update status checklist: jika lolos ubah `- [ ] AC-xx` menjadi `- [x] AC-xx #done`
-    let updatedChecklist = currentChecklist;
-    ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
-      if (acStatus[acKey]) {
-        // Regex untuk mengubah `- [ ] AC-xx` atau `- [ ] ... AC-xx` menjadi `- [x] ... #done`
-        const regexUnchecked = new RegExp(`- \\[ \\] (${acKey}[^\\n]*)`, 'g');
-        updatedChecklist = updatedChecklist.replace(regexUnchecked, '- [x] $1 #done');
-      }
-    });
+  if (!currentChecklist || typeof currentChecklist !== 'string') {
+    console.error('❌ FATAL ERROR: Konten Smart Checklist kosong atau bukan string markdown!');
+    process.exit(1);
+  }
 
-    console.log('Menyimpan perubahan Smart Checklist ke JIRA...');
-    const putRes = await jiraRequest(
-      `/rest/api/3/issue/${jiraIssueKey}/properties/checklist`,
-      'PUT',
-      JSON.stringify(updatedChecklist)
-    );
+  console.log('✅ Konten Smart Checklist berhasil ditemukan di JIRA.');
 
-    if (putRes.statusCode >= 200 && putRes.statusCode < 300) {
-      console.log(`✅ Smart Checklist untuk ${jiraIssueKey} berhasil di-update menjadi DONE!`);
-    } else {
-      console.log(`Respons JIRA (${putRes.statusCode}):`, putRes.body);
-    }
-  } catch (error) {
-    console.error('Error saat update Smart Checklist:', error.message);
+  // Verifikasi apakah semua AC (AC-01 s/d AC-05) benar-benar ada di checklist JIRA
+  const missingInJira = ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].filter(
+    (acKey) => !currentChecklist.includes(acKey)
+  );
+
+  if (missingInJira.length > 0) {
+    console.error(`❌ FATAL ERROR: Item berikut tidak ada di checklist JIRA tiket ${jiraIssueKey}: ${missingInJira.join(', ')}`);
+    console.error('Harap pastikan Acceptance Criteria sudah ditulis di Smart Checklist JIRA.');
+    process.exit(1);
+  }
+
+  // Lakukan transformasi status menjadi DONE
+  // Mendukung format `- AC-01: ...` maupun `- [ ] AC-01: ...`
+  // Di Smart Checklist, tanda `+` atau `#done` menandakan status Done
+  let updatedChecklist = currentChecklist;
+  ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
+    // 1. Tangani format `- AC-xx:` -> `+ AC-xx:`
+    const regexPlain = new RegExp(`^-\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
+    updatedChecklist = updatedChecklist.replace(regexPlain, '+ $1');
+
+    // 2. Tangani format `- [ ] AC-xx:` -> `+ [x] AC-xx:`
+    const regexBracket = new RegExp(`^-\\s*\\[\\s*\\]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
+    updatedChecklist = updatedChecklist.replace(regexBracket, '+ [x] $1');
+  });
+
+  // Pastikan ada perubahan
+  if (updatedChecklist === currentChecklist) {
+    console.log('ℹ️ Seluruh Acceptance Criteria di JIRA sudah berstatus DONE.');
+    process.exit(0);
+  }
+
+  console.log(`Menyimpan pembaruan Smart Checklist ke JIRA (${jiraIssueKey})...`);
+  const putRes = await jiraRequest(
+    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    'PUT',
+    JSON.stringify(updatedChecklist)
+  );
+
+  if (putRes.statusCode >= 200 && putRes.statusCode < 300) {
+    console.log(`\n🎉 SUKSES BESAR: Smart Checklist tiket ${jiraIssueKey} berhasil di-update!`);
+    console.log('Semua Acceptance Criteria (AC-01 s/d AC-05) kini berstatus DONE (Hijau) di JIRA.');
+  } else {
+    console.error(`❌ FATAL ERROR (${putRes.statusCode}): Gagal menyimpan perubahan ke JIRA.`);
+    console.error('Detail Respons:', putRes.body);
+    process.exit(1);
   }
 }
 
-updateSmartChecklist();
+updateSmartChecklist().catch((err) => {
+  console.error('❌ UNHANDLED EXCEPTION:', err);
+  process.exit(1);
+});
