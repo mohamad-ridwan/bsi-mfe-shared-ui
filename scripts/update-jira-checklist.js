@@ -1,7 +1,7 @@
 /**
  * Script Otomasi: Update Smart Checklist di JIRA berdasarkan Hasil Unit Test Jest
  * BSI MFE Shared UI - Bank BRI / BSI Agile SDLC Ecosystem
- * Standar QC Service: Fail-Fast & Strict Traceability Validation
+ * Standar QC Service: Strict Formatting & Real-Time Verification
  */
 
 const fs = require('fs');
@@ -18,7 +18,6 @@ if (!fs.existsSync(resultsPath)) {
 const jestResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
 
 // 2. Evaluasi Status Kelulusan Masing-masing Acceptance Criteria
-// Inisialisasi: default true sampai terbukti ada yang fail
 const acStatus = {
   'AC-01': true,
   'AC-02': true,
@@ -126,7 +125,6 @@ async function updateSmartChecklist() {
   if (getRes.statusCode !== 200) {
     console.error(`❌ FATAL ERROR (${getRes.statusCode}): Gagal mengambil Smart Checklist dari JIRA.`);
     console.error('Detail Respons:', getRes.body);
-    console.error('Pastikan tiket memiliki Smart Checklist dan token JIRA memiliki hak akses.');
     process.exit(1);
   }
 
@@ -147,29 +145,25 @@ async function updateSmartChecklist() {
 
   if (missingInJira.length > 0) {
     console.error(`❌ FATAL ERROR: Item berikut tidak ada di checklist JIRA tiket ${jiraIssueKey}: ${missingInJira.join(', ')}`);
-    console.error('Harap pastikan Acceptance Criteria sudah ditulis di Smart Checklist JIRA.');
     process.exit(1);
   }
 
-  // Lakukan transformasi status menjadi DONE
-  // Mendukung format `- AC-01: ...` maupun `- [ ] AC-01: ...`
-  // Di Smart Checklist, tanda `+` atau `#done` menandakan status Done
+  // Format Standar Smart Checklist untuk status DONE:
+  // Harus menggunakan format: `+ [ ] AC-xx:` atau `+ [x] AC-xx:`
+  // Sesuai panduan Smart Checklist:
+  // -- todo
+  // + done
   let updatedChecklist = currentChecklist;
+
   ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].forEach((acKey) => {
-    // 1. Tangani format `- AC-xx:` -> `+ AC-xx:`
-    const regexPlain = new RegExp(`^-\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
-    updatedChecklist = updatedChecklist.replace(regexPlain, '+ $1');
+    // Pola 1: Mencocokkan `- AC-xx:` atau `+ AC-xx:` (tanpa kurung siku) -> ubah ke `+ [ ] AC-xx:`
+    const regexPlain = new RegExp(`^[\\+\\-]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
+    updatedChecklist = updatedChecklist.replace(regexPlain, '+ [ ] $1');
 
-    // 2. Tangani format `- [ ] AC-xx:` -> `+ [x] AC-xx:`
-    const regexBracket = new RegExp(`^-\\s*\\[\\s*\\]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
-    updatedChecklist = updatedChecklist.replace(regexBracket, '+ [x] $1');
+    // Pola 2: Mencocokkan `- [ ] AC-xx:` atau `- [x] AC-xx:` -> ubah ke `+ [ ] AC-xx:`
+    const regexBracket = new RegExp(`^[\\+\\-]\\s*\\[[ xX]?\\]\\s*(${acKey}[:\\s][^\\n]*)`, 'gm');
+    updatedChecklist = updatedChecklist.replace(regexBracket, '+ [ ] $1');
   });
-
-  // Pastikan ada perubahan
-  if (updatedChecklist === currentChecklist) {
-    console.log('ℹ️ Seluruh Acceptance Criteria di JIRA sudah berstatus DONE.');
-    process.exit(0);
-  }
 
   console.log(`Menyimpan pembaruan Smart Checklist ke JIRA (${jiraIssueKey})...`);
   const putRes = await jiraRequest(
@@ -178,14 +172,33 @@ async function updateSmartChecklist() {
     JSON.stringify(updatedChecklist)
   );
 
-  if (putRes.statusCode >= 200 && putRes.statusCode < 300) {
-    console.log(`\n🎉 SUKSES BESAR: Smart Checklist tiket ${jiraIssueKey} berhasil di-update!`);
-    console.log('Semua Acceptance Criteria (AC-01 s/d AC-05) kini berstatus DONE (Hijau) di JIRA.');
-  } else {
+  if (putRes.statusCode < 200 || putRes.statusCode >= 300) {
     console.error(`❌ FATAL ERROR (${putRes.statusCode}): Gagal menyimpan perubahan ke JIRA.`);
     console.error('Detail Respons:', putRes.body);
     process.exit(1);
   }
+
+  // VERIFIKASI KEMBALI (Audit Trail): Pastikan JIRA benar-benar menyimpan status Done
+  console.log('Melakukan verifikasi ulang langsung ke API JIRA...');
+  const verifyRes = await jiraRequest(
+    `/rest/api/3/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
+    'GET'
+  );
+
+  const verifyVal = JSON.parse(verifyRes.body).value || '';
+  const notDone = ['AC-01', 'AC-02', 'AC-03', 'AC-04', 'AC-05'].filter((acKey) => {
+    const isDone = new RegExp(`\\+\\s*\\[?\\s*\\w*\\s*\\]?\\s*${acKey}`, 'm').test(verifyVal);
+    return !isDone;
+  });
+
+  if (notDone.length > 0) {
+    console.error(`❌ FATAL VERIFICATION ERROR: Item berikut belum terdaftar sebagai DONE di JIRA: ${notDone.join(', ')}`);
+    console.error('Konten JIRA saat ini:\n', verifyVal);
+    process.exit(1);
+  }
+
+  console.log(`\n🎉 VERIFIKASI BERHASIL 100%: Smart Checklist tiket ${jiraIssueKey} telah terkonfirmasi DONE di JIRA!`);
+  console.log('Semua Acceptance Criteria (AC-01 s/d AC-05) kini resmi berstatus DONE (Hijau) di Smart Checklist JIRA.');
 }
 
 updateSmartChecklist().catch((err) => {
