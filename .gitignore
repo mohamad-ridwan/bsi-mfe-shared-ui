@@ -56,3 +56,4 @@ Thumbs.db
 .stylelintcache
 *.tsbuildinfo
 
+jest-results.json

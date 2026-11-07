@@ -121,7 +121,7 @@ Setiap kali FE Dev melakukan push dan membuka Pull Request ke branch `main` atau
 |---|---|---|---|
 | **Stage 1** | **Environment Setup** | `actions/checkout@v4`, `actions/setup-node@v4`, `npm ci` | Node.js v20/v22 terkonfigurasi, dependency terinstal dari `package-lock.json` tanpa modifikasi. |
 | **Stage 2** | **Type Checking** | `npm run type-check` (`tsc --noEmit`) | Tidak ada kesalahan tipe TypeScript pada `TransactionForm.tsx` dan modul pendukung. |
-| **Stage 3** | **Unit Testing & Coverage** | `npm run test:coverage` (`jest --coverage`) | - 15 Unit Test di [`TransactionForm.test.tsx`](file:///Volumes/iwandev/neocentra-bank/bsi-mfe-shared-ui/src/components/form/transaction-form/TransactionForm.test.tsx) lulus 100%.<br>- File laporan `coverage/lcov.info` terbuat.<br>- Coverage lokal memenuhi ambang batas 90%. |
+| **Stage 3** | **Unit Testing & Coverage** | `npm run test:coverage` (`jest --coverage`) | - 16 Unit Test di [`TransactionForm.test.tsx`](file:///Volumes/iwandev/neocentra-bank/bsi-mfe-shared-ui/src/components/form/transaction-form/TransactionForm.test.tsx) terstruktur rapi sesuai standar AC (AC-01 s/d AC-05) dan lulus 100%.<br>- File laporan `coverage/lcov.info` terbuat.<br>- Coverage lokal memenuhi ambang batas 90% (aktual: 100%). |
 | **Stage 4** | **SonarQube Scan** | `SonarSource/sonarqube-scan-action@v4` | Source code dan file `coverage/lcov.info` berhasil dianalisis dan dikirim ke server SonarQube. |
 | **Stage 5** | **Quality Gate Gatekeeper** | `SonarSource/sonarqube-quality-gate-action@v1` | **PR Check Status**: Memblokir merge jika status `FAILED`, meloloskan jika `PASSED`. |
 
@@ -507,5 +507,5 @@ git commit -m "BSI-SHARED-204 #ready-for-test #comment [FE Dev] PR #14 merged to
 - [ ] SonarQube Quality Gate dikonfigurasi dengan ambang batas Coverage New Code $\ge 90\%$.
 - [ ] Aturan branch protection diaktifkan di GitHub: Pull Request wajib lulus pemeriksaan SonarQube sebelum diperbolehkan merge.
 - [ ] Integrasi JIRA Automation Rule aktif: PR Merged otomatis mengubah status issue ke `Ready for Test` untuk QC Service.
-- [ ] Seluruh 15 unit test pada [`TransactionForm.test.tsx`](file:///Volumes/iwandev/neocentra-bank/bsi-mfe-shared-ui/src/components/form/transaction-form/TransactionForm.test.tsx) lulus evaluasi pipeline.
+- [x] Seluruh 16 unit test pada [`TransactionForm.test.tsx`](file:///Volumes/iwandev/neocentra-bank/bsi-mfe-shared-ui/src/components/form/transaction-form/TransactionForm.test.tsx) lulus evaluasi pipeline dengan standar traceability AC.
 

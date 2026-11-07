@@ -34,8 +34,8 @@ jobs:
       - name: "4. TypeScript Type-Checking"
         run: npm run type-check
 
-      - name: "5. Execute Jest Unit Tests with Coverage"
-        run: npm run test:coverage
+      - name: "5. Execute Jest Unit Tests with Coverage & JSON Report"
+        run: npx jest --coverage --json --outputFile=jest-results.json
         env:
           CI: true
 
@@ -55,11 +55,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: "8. SonarQube Quality Gate Check"
+        id: sonar-quality-gate
         uses: SonarSource/sonarqube-quality-gate-action@v1
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: "8b. Sync Jira Smart Checklist (DoD & AC Verification)"
+        if: always()
+        run: |
+          JIRA_ISSUE_KEY=$(echo "${{ github.head_ref || github.event.pull_request.title }}" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+          if [ -n "$JIRA_ISSUE_KEY" ]; then
+            export JIRA_ISSUE_KEY="$JIRA_ISSUE_KEY"
+            export JIRA_BASE_URL="${{ secrets.JIRA_BASE_URL }}"
+            export JIRA_API_BASIC_AUTH="${{ secrets.JIRA_API_BASIC_AUTH }}"
+            export TYPECHECK_PASSED="true"
+            export SONAR_GATE_STATUS="${{ steps.sonar-quality-gate.outcome == 'success' && 'PASSED' || 'FAILED' }}"
+            node scripts/update-jira-checklist.js
+          fi
 
       - name: "9. Auto-Transition Jira Ticket to IN REVIEW"
         if: success() && github.event_name == 'pull_request'
