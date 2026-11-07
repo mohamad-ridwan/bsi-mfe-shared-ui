@@ -19,92 +19,14 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
   });
 
   // =========================================================================
-  // CORE RENDERING & CONFIGURATION
-  // =========================================================================
-  describe('Core Component Rendering', () => {
-    // TC-01: Render default dengan konfigurasi minimum
-    it('TC-01: should render correctly with default props', () => {
-      render(<TransactionForm {...defaultProps} />);
-
-      // Header default
-      expect(screen.getByText('Formulir Transaksi')).toBeInTheDocument();
-      expect(screen.getByText('Bank Syariah Indonesia')).toBeInTheDocument();
-
-      // Currency prefix default
-      expect(screen.getByText('Rp')).toBeInTheDocument();
-
-      // Inputs with default values
-      const amountInput = screen.getByLabelText(/Nominal/i) as HTMLInputElement;
-      const descriptionInput = screen.getByLabelText(/Keterangan/i) as HTMLTextAreaElement;
-
-      expect(amountInput.value).toBe('150000');
-      expect(descriptionInput.value).toBe('Pembayaran tagihan listrik');
-
-      // Submit button default text
-      expect(
-        screen.getByRole('button', { name: 'Kirim Transaksi' }),
-      ).toBeInTheDocument();
-    });
-
-    // TC-03: Sembunyikan header
-    it('TC-03: should not render header when hideHeader is true', () => {
-      render(<TransactionForm {...defaultProps} hideHeader={true} />);
-
-      expect(screen.queryByText('Formulir Transaksi')).not.toBeInTheDocument();
-      expect(screen.queryByText('Bank Syariah Indonesia')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('AccountBalanceIcon')).not.toBeInTheDocument();
-    });
-
-    // TC-04: Kustomisasi teks header & subjudul kosong
-    it('TC-04: should render custom title and omit subtitle when subtitle is empty', () => {
-      render(
-        <TransactionForm
-          {...defaultProps}
-          title="Kustom Title"
-          subtitle=""
-        />,
-      );
-
-      expect(screen.getByText('Kustom Title')).toBeInTheDocument();
-      expect(screen.queryByText('Bank Syariah Indonesia')).not.toBeInTheDocument();
-    });
-
-    // TC-11: Submit formulir pada kondisi normal
-    it('TC-11: should call onSubmit when submitting the form under normal conditions', async () => {
-      const user = userEvent.setup();
-      const handleSubmit = jest.fn();
-
-      render(<TransactionForm {...defaultProps} onSubmit={handleSubmit} />);
-
-      const submitBtn = screen.getByRole('button', { name: 'Kirim Transaksi' });
-      await user.click(submitBtn);
-
-      expect(handleSubmit).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  // =========================================================================
   // [AC-01] Validasi Nominal
   // Detail:
   // - Field Nominal hanya menerima angka positif dengan nilai minimum Rp 10.000 dan maksimum Rp 100.000.000.000 (100 Miliar)
   // - Bila nilai nominal bernilai 0 atau dikosongkan, input harus menampilkan string kosong, bukan angka 0 telanjang
   // =========================================================================
   describe('[AC-01] Validasi Nominal', () => {
-    // TC-02: Render nominal dengan nilai 0 (zero)
-    it('TC-02 [AC-01]: should render empty string for amount when value is 0', () => {
-      render(
-        <TransactionForm
-          {...defaultProps}
-          values={{ amount: 0, description: '' }}
-        />,
-      );
-
-      const amountInput = screen.getByLabelText(/Nominal/i) as HTMLInputElement;
-      expect(amountInput.value).toBe('');
-    });
-
-    // TC-07: Pengubahan nilai nominal transaksi yang valid
-    it('TC-07 [AC-01]: should trigger onAmountChange and onChange when typing valid amount input', async () => {
+    // TC-AC01-01: Pengubahan nilai nominal transaksi yang valid (Boundary & Range)
+    it('TC-AC01-01 [AC-01]: should trigger onAmountChange and onChange when typing valid amount input', async () => {
       const user = userEvent.setup();
       const handleAmountChange = jest.fn();
       const handleChange = jest.fn();
@@ -125,23 +47,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(handleChange).toHaveBeenCalledWith('amount', expect.any(Number));
     });
 
-    it('TC-07b [AC-01]: should handle amount change when optional callbacks are not provided', async () => {
-      const user = userEvent.setup();
-
-      render(
-        <TransactionForm
-          {...defaultProps}
-          values={{ amount: '', description: '' }}
-        />,
-      );
-
-      const amountInput = screen.getByLabelText(/Nominal/i);
-      await user.type(amountInput, '123');
-      expect(amountInput).toBeInTheDocument();
-    });
-
-    // TC-07c: Validasi batas nominal (maksimum 100 Miliar dan non-negatif)
-    it('TC-07c [AC-01]: should not trigger callbacks when amount exceeds limit (>100B) or is negative', () => {
+    // TC-AC01-02: Validasi batas nominal (maksimum 100 Miliar dan non-negatif)
+    it('TC-AC01-02 [AC-01]: should not trigger callbacks when amount exceeds limit (>100B) or is negative', () => {
       const handleAmountChange = jest.fn();
       const handleChange = jest.fn();
 
@@ -167,8 +74,21 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(handleChange).not.toHaveBeenCalled();
     });
 
-    // TC-08: Pengosongan nilai nominal transaksi
-    it('TC-08 [AC-01]: should trigger onAmountChange with 0 and onChange with 0 when amount input is cleared', async () => {
+    // TC-AC01-03: Render nominal dengan nilai 0 (zero) menghasilkan string kosong
+    it('TC-AC01-03 [AC-01]: should render empty string for amount when value is 0', () => {
+      render(
+        <TransactionForm
+          {...defaultProps}
+          values={{ amount: 0, description: '' }}
+        />,
+      );
+
+      const amountInput = screen.getByLabelText(/Nominal/i) as HTMLInputElement;
+      expect(amountInput.value).toBe('');
+    });
+
+    // TC-AC01-04: Pengosongan nilai nominal transaksi mereset nilai ke 0
+    it('TC-AC01-04 [AC-01]: should trigger onAmountChange with 0 and onChange with 0 when amount input is cleared', async () => {
       const user = userEvent.setup();
       const handleAmountChange = jest.fn();
       const handleChange = jest.fn();
@@ -188,6 +108,22 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(handleAmountChange).toHaveBeenCalledWith(0);
       expect(handleChange).toHaveBeenCalledWith('amount', 0);
     });
+
+    // TC-AC01-05: Penanganan pengubahan nilai nominal jika callback opsional tidak disediakan
+    it('TC-AC01-05 [AC-01]: should handle amount change when optional callbacks are not provided', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <TransactionForm
+          {...defaultProps}
+          values={{ amount: '', description: '' }}
+        />,
+      );
+
+      const amountInput = screen.getByLabelText(/Nominal/i);
+      await user.type(amountInput, '123');
+      expect(amountInput).toBeInTheDocument();
+    });
   });
 
   // =========================================================================
@@ -197,8 +133,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
   // - Trigger submit saat isLoading atau disabled tidak boleh mengeksekusi onSubmit
   // =========================================================================
   describe('[AC-02] Proteksi Idempotency & Double Submission', () => {
-    // TC-12: Proteksi submit saat kondisi isLoading
-    it('TC-12 [AC-02]: should disable submit button, show loadingText and CircularProgress, and prevent onSubmit when isLoading is true', () => {
+    // TC-AC02-01: Proteksi submit dan visual state saat kondisi isLoading
+    it('TC-AC02-01 [AC-02]: should disable submit button, show loadingText and CircularProgress, and prevent onSubmit when isLoading is true', () => {
       const handleSubmit = jest.fn();
 
       render(
@@ -228,8 +164,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(handleSubmit).not.toHaveBeenCalled();
     });
 
-    // TC-13: Proteksi submit saat kondisi disabled
-    it('TC-13 [AC-02]: should disable all inputs and submit button, and prevent onSubmit when disabled is true', () => {
+    // TC-AC02-02: Proteksi submit saat kondisi disabled
+    it('TC-AC02-02 [AC-02]: should disable all inputs and submit button, and prevent onSubmit when disabled is true', () => {
       const handleSubmit = jest.fn();
 
       render(
@@ -264,8 +200,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
   // - Input Keterangan menerima teks multiline dengan panjang maksimal 255 karakter
   // =========================================================================
   describe('[AC-03] Keterangan Transaksi & Sanitasi', () => {
-    // TC-09: Pengubahan teks keterangan transaksi
-    it('TC-09 [AC-03]: should trigger onDescriptionChange and onChange when typing in description input', async () => {
+    // TC-AC03-01: Pengubahan teks keterangan transaksi memicu callback
+    it('TC-AC03-01 [AC-03]: should trigger onDescriptionChange and onChange when typing in description input', async () => {
       const user = userEvent.setup();
       const handleDescriptionChange = jest.fn();
       const handleChange = jest.fn();
@@ -286,7 +222,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(handleChange).toHaveBeenCalledWith('description', expect.any(String));
     });
 
-    it('TC-09b [AC-03]: should handle description change when optional callbacks are not provided', async () => {
+    // TC-AC03-02: Penanganan input keterangan saat callback opsional tidak disediakan
+    it('TC-AC03-02 [AC-03]: should handle description change when optional callbacks are not provided', async () => {
       const user = userEvent.setup();
 
       render(
@@ -309,8 +246,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
   // - Formulir menyediakan slot footer di bawah tombol submit
   // =========================================================================
   describe('[AC-04] Slotting Inversion of Control', () => {
-    // TC-05: Injeksi komponen kustom pada slot children
-    it('TC-05 [AC-04]: should render custom injected children slot above nominal input', () => {
+    // TC-AC04-01: Injeksi komponen kustom pada slot children di atas field nominal
+    it('TC-AC04-01 [AC-04]: should render custom injected children slot above nominal input', () => {
       render(
         <TransactionForm {...defaultProps}>
           <div data-testid="custom-account-selector">Pilih Rekening Sumber</div>
@@ -321,8 +258,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(screen.getByText('Pilih Rekening Sumber')).toBeInTheDocument();
     });
 
-    // TC-06: Injeksi komponen pada slot footer
-    it('TC-06 [AC-04]: should render custom footer slot below submit button', () => {
+    // TC-AC04-02: Injeksi komponen pada slot footer di bawah tombol submit
+    it('TC-AC04-02 [AC-04]: should render custom footer slot below submit button', () => {
       render(
         <TransactionForm
           {...defaultProps}
@@ -342,8 +279,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
   //   field harus ditandai aria-invalid="true" dan pesan error tampil di helper text
   // =========================================================================
   describe('[AC-05] Dynamic Error Presentation', () => {
-    // TC-10: Menampilkan pesan error validasi per-field
-    it('TC-10 [AC-05]: should display error messages and mark fields invalid with aria-invalid when errors prop is provided', () => {
+    // TC-AC05-01: Menampilkan pesan error validasi per-field dan tanda aria-invalid
+    it('TC-AC05-01 [AC-05]: should display error messages and mark fields invalid with aria-invalid when errors prop is provided', () => {
       const errors = {
         amount: 'Nominal minimal Rp 10.000',
         description: 'Keterangan wajib diisi',
@@ -359,6 +296,71 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
 
       expect(amountInput).toHaveAttribute('aria-invalid', 'true');
       expect(descriptionInput).toHaveAttribute('aria-invalid', 'true');
+    });
+  });
+
+  // =========================================================================
+  // CORE RENDERING & FORM DEFAULTS
+  // =========================================================================
+  describe('Core Component Rendering & Form Defaults', () => {
+    // TC-CORE-01: Render default dengan konfigurasi minimum
+    it('TC-CORE-01: should render correctly with default props', () => {
+      render(<TransactionForm {...defaultProps} />);
+
+      // Header default
+      expect(screen.getByText('Formulir Transaksi')).toBeInTheDocument();
+      expect(screen.getByText('Bank Syariah Indonesia')).toBeInTheDocument();
+
+      // Currency prefix default
+      expect(screen.getByText('Rp')).toBeInTheDocument();
+
+      // Inputs with default values
+      const amountInput = screen.getByLabelText(/Nominal/i) as HTMLInputElement;
+      const descriptionInput = screen.getByLabelText(/Keterangan/i) as HTMLTextAreaElement;
+
+      expect(amountInput.value).toBe('150000');
+      expect(descriptionInput.value).toBe('Pembayaran tagihan listrik');
+
+      // Submit button default text
+      expect(
+        screen.getByRole('button', { name: 'Kirim Transaksi' }),
+      ).toBeInTheDocument();
+    });
+
+    // TC-CORE-02: Sembunyikan header jika hideHeader bernilai true
+    it('TC-CORE-02: should not render header when hideHeader is true', () => {
+      render(<TransactionForm {...defaultProps} hideHeader={true} />);
+
+      expect(screen.queryByText('Formulir Transaksi')).not.toBeInTheDocument();
+      expect(screen.queryByText('Bank Syariah Indonesia')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('AccountBalanceIcon')).not.toBeInTheDocument();
+    });
+
+    // TC-CORE-03: Kustomisasi teks header & subjudul kosong
+    it('TC-CORE-03: should render custom title and omit subtitle when subtitle is empty', () => {
+      render(
+        <TransactionForm
+          {...defaultProps}
+          title="Kustom Title"
+          subtitle=""
+        />,
+      );
+
+      expect(screen.getByText('Kustom Title')).toBeInTheDocument();
+      expect(screen.queryByText('Bank Syariah Indonesia')).not.toBeInTheDocument();
+    });
+
+    // TC-CORE-04: Submit formulir pada kondisi normal
+    it('TC-CORE-04: should call onSubmit when submitting the form under normal conditions', async () => {
+      const user = userEvent.setup();
+      const handleSubmit = jest.fn();
+
+      render(<TransactionForm {...defaultProps} onSubmit={handleSubmit} />);
+
+      const submitBtn = screen.getByRole('button', { name: 'Kirim Transaksi' });
+      await user.click(submitBtn);
+
+      expect(handleSubmit).toHaveBeenCalledTimes(1);
     });
   });
 });

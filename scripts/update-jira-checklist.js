@@ -1,72 +1,126 @@
 /**
  * Script Otomasi: Update Smart Checklist di JIRA berdasarkan Granular Sub-Criteria Unit Test
  * BSI MFE Shared UI - Bank BRI / BSI Agile SDLC Ecosystem
- * Standar QC Service: Sub-Details Traceability & Strict Verification
+ * Standar QC Service: Sub-Details Traceability & Strict Verification (Quality Gatekeeper)
  */
 
 const fs = require('fs');
 const https = require('https');
 
-// 1. Validasi Keberadaan Hasil Jest
+// 1. Validasi Keberadaan Hasil Jest & Fail-Safe Execution Check
 const resultsPath = process.env.JEST_RESULTS_PATH || './jest-results.json';
 if (!fs.existsSync(resultsPath)) {
-  console.error('❌ FATAL ERROR: File jest-results.json tidak ditemukan!');
-  console.error('Unit test harus dijalankan dengan flag --json --outputFile=jest-results.json sebelum step ini.');
+  console.error('\n❌ [QC Service GATEKEEPER] FATAL ERROR: File jest-results.json tidak ditemukan!');
+  console.error('Unit test harus dijalankan dengan flag: npx jest --coverage --json --outputFile=jest-results.json');
+  console.error('🛑 CI Pipeline DIHENTIKAN. Tidak ada eksekusi checklist JIRA.\n');
   process.exit(1);
 }
 
-const jestResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+let jestResults;
+try {
+  jestResults = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+} catch (err) {
+  console.error('\n❌ [QC Service GATEKEEPER] FATAL ERROR: Gagal mem-parse file jest-results.json!');
+  console.error(`Detail error: ${err.message}`);
+  process.exit(1);
+}
 
-// 2. Definisi Granular Sub-Kriteria Acceptance Criteria
+// PRE-FLIGHT CHECK: Cek apakah seluruh unit test Jest lulus 100%
+if (!jestResults.success || (jestResults.numFailedTests && jestResults.numFailedTests > 0) || jestResults.numTotalTests === 0) {
+  console.error('\n============================================================');
+  console.error('🛑 [QC Service GATEKEEPER] CI PIPELINE HALTED: UNIT TEST GAGAL / KOSONG!');
+  console.error('============================================================');
+  console.error(`Total Tests : ${jestResults.numTotalTests || 0}`);
+  console.error(`Passed      : ${jestResults.numPassedTests || 0}`);
+  console.error(`Failed      : ${jestResults.numFailedTests || 0}`);
+  console.error(`Success Flag: ${jestResults.success}`);
+  console.error('\n❌ Terdapat unit test yang gagal atau melanggar spesifikasi komponen!');
+  console.error('Sesuai standar Bank BRI / BSI SDLC, perubahan kode ditolak dan tidak boleh meng-update checklist JIRA.');
+  process.exit(1);
+}
+
+// 2. Definisi Granular Sub-Kriteria Acceptance Criteria (Traceable ke TransactionForm.test.tsx)
 // Title AC HANYA boleh DONE jika seluruh sub-kriteria di bawahnya lulus 100%!
 const acSubCriteria = {
   'AC-01': {
     title: 'Validasi Nominal',
     subDetails: {
-      'AC-01.1 (Boundary & Range Rp 10.000 - 100B)': { testKeys: ['TC-07', 'TC-07c'], passed: false, tested: false },
-      'AC-01.2 (Zero/Empty string representation)': { testKeys: ['TC-02', 'TC-08'], passed: false, tested: false },
+      'AC-01.1 (Boundary & Range Rp 10.000 - 100B)': {
+        testKeys: ['TC-AC01-01', 'TC-AC01-02'],
+        passed: false,
+        tested: false,
+      },
+      'AC-01.2 (Zero/Empty string representation)': {
+        testKeys: ['TC-AC01-03', 'TC-AC01-04'],
+        passed: false,
+        tested: false,
+      },
     },
     overallPassed: false,
   },
   'AC-02': {
     title: 'Proteksi Idempotency & Double Submission',
     subDetails: {
-      'AC-02.1 (Spinner & Form Disabled during Loading)': { testKeys: ['TC-12'], passed: false, tested: false },
-      'AC-02.2 (Prevent Double Submit Callback)': { testKeys: ['TC-12', 'TC-13'], passed: false, tested: false },
+      'AC-02.1 (Spinner & Form Disabled during Loading)': {
+        testKeys: ['TC-AC02-01'],
+        passed: false,
+        tested: false,
+      },
+      'AC-02.2 (Prevent Double Submit Callback)': {
+        testKeys: ['TC-AC02-01', 'TC-AC02-02'],
+        passed: false,
+        tested: false,
+      },
     },
     overallPassed: false,
   },
   'AC-03': {
     title: 'Keterangan Transaksi & Sanitasi',
     subDetails: {
-      'AC-03.1 (Multiline Text Description up to 255 chars)': { testKeys: ['TC-09', 'TC-09b'], passed: false, tested: false },
+      'AC-03.1 (Multiline Text Description up to 255 chars)': {
+        testKeys: ['TC-AC03-01'],
+        passed: false,
+        tested: false,
+      },
     },
     overallPassed: false,
   },
   'AC-04': {
     title: 'Slotting Inversion of Control',
     subDetails: {
-      'AC-04.1 (Custom Children Slot above amount)': { testKeys: ['TC-05'], passed: false, tested: false },
-      'AC-04.2 (Custom Footer Slot below submit)': { testKeys: ['TC-06'], passed: false, tested: false },
+      'AC-04.1 (Custom Children Slot above amount)': {
+        testKeys: ['TC-AC04-01'],
+        passed: false,
+        tested: false,
+      },
+      'AC-04.2 (Custom Footer Slot below submit)': {
+        testKeys: ['TC-AC04-02'],
+        passed: false,
+        tested: false,
+      },
     },
     overallPassed: false,
   },
   'AC-05': {
     title: 'Dynamic Error Presentation',
     subDetails: {
-      'AC-05.1 (Aria-invalid & Error Helper Text rendering)': { testKeys: ['TC-10'], passed: false, tested: false },
+      'AC-05.1 (Aria-invalid & Error Helper Text rendering)': {
+        testKeys: ['TC-AC05-01'],
+        passed: false,
+        tested: false,
+      },
     },
     overallPassed: false,
   },
 };
 
-// Kumpulkan hasil eksekusi test per test case ID (TC-xx)
+// Kumpulkan hasil eksekusi test per test case ID (Mendukung format TC-ACxx-yy, TC-CORE-xx, dan TC-xx)
 const testCaseResults = {};
 
 jestResults.testResults.forEach((suite) => {
   suite.assertionResults.forEach((test) => {
     const title = test.title || '';
-    const match = title.match(/TC-\d+[a-z]?/);
+    const match = title.match(/TC-[A-Za-z0-9_-]+/);
     if (match) {
       const tcId = match[0];
       testCaseResults[tcId] = test.status === 'passed';
@@ -79,6 +133,7 @@ console.table(testCaseResults);
 
 // Evaluasi sub-kriteria
 let allSubCriteriaPassed = true;
+const failedViolations = [];
 
 Object.keys(acSubCriteria).forEach((acKey) => {
   const ac = acSubCriteria[acKey];
@@ -86,16 +141,24 @@ Object.keys(acSubCriteria).forEach((acKey) => {
 
   Object.keys(ac.subDetails).forEach((subKey) => {
     const sub = ac.subDetails[subKey];
-    // Pastikan seluruh testKeys yang dipetakan bernilai passed
-    const requiredTestsPassed = sub.testKeys.every((tc) => testCaseResults[tc] === true);
+    // Pastikan seluruh testKeys yang dipetakan benar-benar dijalankan dan passed
     const requiredTestsExecuted = sub.testKeys.every((tc) => tc in testCaseResults);
+    const requiredTestsPassed = sub.testKeys.every((tc) => testCaseResults[tc] === true);
 
     sub.tested = requiredTestsExecuted;
-    sub.passed = requiredTestsPassed;
+    sub.passed = requiredTestsExecuted && requiredTestsPassed;
 
     if (!sub.passed) {
       acSubAllOk = false;
       allSubCriteriaPassed = false;
+      failedViolations.push({
+        ac: acKey,
+        sub: subKey,
+        tests: sub.testKeys.join(', '),
+        reason: !requiredTestsExecuted
+          ? 'Sebagian test case belum teruji / tidak ditemukan di suite'
+          : 'Ada assertion test case yang bernilai FAILED',
+      });
     }
   });
 
@@ -119,9 +182,19 @@ Object.keys(acSubCriteria).forEach((acKey) => {
 });
 console.table(tableReport);
 
+// QUALITY GATE KETAT: Jika ada 1 saja yang tidak sesuai / melanggar AC, STOP CI PIPELINES & BERIKAN ERROR LOG!
 if (!allSubCriteriaPassed) {
-  console.error('\n❌ FATAL ERROR: Terdapat sub-kriteria AC yang belum teruji atau gagal!');
-  console.error('Title AC tidak boleh diubah ke DONE jika sub-kriterianya belum lolos verifikasi.');
+  console.error('\n============================================================');
+  console.error('🛑 [QC Service GATEKEEPER] QUALITY GATE FAILED: PELANGGARAN AC TERDETEKSI!');
+  console.error('============================================================');
+  console.error('❌ Terdapat Acceptance Criteria yang tidak terpenuhi atau gagal diverifikasi:');
+  failedViolations.forEach((v, idx) => {
+    console.error(`   ${idx + 1}. [${v.ac}] ${v.sub}`);
+    console.error(`      Test Keys: ${v.tests}`);
+    console.error(`      Penyebab : ${v.reason}`);
+  });
+  console.error('\nSesuai governance SDLC Bank BRI / BSI, CI Pipeline dihentikan seketika.');
+  console.error('Checklist JIRA TIDAK AKAN di-update hingga seluruh kriteria diperbaiki oleh FE Dev.\n');
   process.exit(1);
 }
 
