@@ -191,7 +191,34 @@ Object.keys(acSubCriteria).forEach((acKey) => {
 });
 console.table(tableReport);
 
-// 3. Konfigurasi JIRA
+// 3. Evaluasi Definition of Done (DoD) & Gatekeeper Status
+console.log('\n--- EVALUASI DEFINITION OF DONE (DoD) ---');
+
+// DoD 1: Bebas error TypeScript
+const isTypeCheckPassed = process.env.TYPECHECK_PASSED === 'true';
+
+// DoD 2: Unit Test Jest coverage >= 90%
+const isJestCoveragePassed = Boolean(
+  jestResults.success &&
+  (jestResults.numPassedTests || 0) > 0 &&
+  (jestResults.numFailedTests || 0) === 0
+);
+
+// DoD 3: SonarQube Quality Gate lulus
+const sonarGateStatus = (process.env.SONAR_GATE_STATUS || '').trim().toUpperCase();
+const isSonarPassed = sonarGateStatus === 'PASSED';
+
+const dodReport = [
+  { 'Item DoD': 'Bebas error TypeScript', 'Hasil': isTypeCheckPassed ? '✅ PASSED' : '❌ FAILED / UNVERIFIED', 'Status Jira': isTypeCheckPassed ? '🟢 DONE (+)' : '🔵 IN PROGRESS (~)' },
+  { 'Item DoD': 'Unit Test Jest coverage >= 90%', 'Hasil': isJestCoveragePassed ? '✅ PASSED' : '❌ FAILED', 'Status Jira': isJestCoveragePassed ? '🟢 DONE (+)' : '🔵 IN PROGRESS (~)' },
+  { 'Item DoD': 'SonarQube Quality Gate lulus', 'Hasil': isSonarPassed ? '✅ PASSED' : (sonarGateStatus === 'FAILED' ? '❌ FAILED' : '⚠️ PENDING/IN_PROGRESS'), 'Status Jira': isSonarPassed ? '🟢 DONE (+)' : '🔵 IN PROGRESS (~)' },
+];
+console.table(dodReport);
+
+// DoD Gatekeeper: Apakah semua DoD CI (TypeScript, Jest, SonarQube) lolos 100%?
+const allCiDodPassed = isTypeCheckPassed && isJestCoveragePassed && isSonarPassed;
+
+// 4. Konfigurasi JIRA
 const jiraBaseUrl = process.env.JIRA_BASE_URL;
 const jiraAuth = process.env.JIRA_API_BASIC_AUTH;
 const jiraIssueKey = process.env.JIRA_ISSUE_KEY || 'BSI-9';
@@ -229,6 +256,12 @@ function jiraRequest(path, method, data = null) {
     }
     req.end();
   });
+}
+
+function updateChecklistItem(text, keyword, newPrefix) {
+  // Regex aman dengan callback replacement function untuk mencegah bug placeholder string
+  const regex = new RegExp('^[+\\-~x]\\s*(?:\\[[^\\]]*\\]\\s*)?(' + keyword + '[^\\n]*)', 'm');
+  return text.replace(regex, (match, title) => newPrefix + ' ' + title);
 }
 
 async function updateSmartChecklist() {
@@ -299,54 +332,28 @@ async function updateSmartChecklist() {
 
   Object.keys(acSubCriteria).forEach((acKey) => {
     const ac = acSubCriteria[acKey];
-    const regexAny = new RegExp(`^[\\+\\-~x]\\s*(\\[[^\\]]*\\]\\s*)?(${acKey}[:\\s][^\\n]*)`, 'gm');
-
-    if (ac.overallStatus === 'DONE') {
-      updatedChecklist = updatedChecklist.replace(regexAny, '+ $2');
-      console.log(`   ➡️ [JIRA SYNC] ${acKey} -> DONE (+)`);
-    } else if (ac.overallStatus === 'IN_PROGRESS') {
-      updatedChecklist = updatedChecklist.replace(regexAny, '~ $2');
-      console.log(`   ➡️ [JIRA SYNC] ${acKey} -> IN PROGRESS (~)`);
-    } else {
-      updatedChecklist = updatedChecklist.replace(regexAny, '- $2');
-      console.log(`   ➡️ [JIRA SYNC] ${acKey} -> TODO (-)`);
-    }
+    const prefix = ac.overallStatus === 'DONE' ? '+' : ac.overallStatus === 'IN_PROGRESS' ? '~' : '-';
+    updatedChecklist = updateChecklistItem(updatedChecklist, acKey, prefix);
+    console.log(`   ➡️ [JIRA SYNC] ${acKey} -> ${ac.overallStatus} (${prefix})`);
   });
 
   // 4. Transformasi Definition of Done (DoD) & Automated Test Execution
-  console.log(`\n--- MENGEVALUASI STATUS DEFINITION OF DONE (DoD) & TEST EXECUTION ---`);
+  console.log(`\n--- MENERAPKAN UPDATE JIRA SMART CHECKLIST UNTUK DoD ---`);
 
-  // DoD 1: Bebas error TypeScript (npm run type-check)
-  // Di CI, step type-check mendahului script ini. Jika script ini berjalan, type-check sudah lolos.
-  const isTypeCheckPassed = process.env.TYPECHECK_PASSED !== 'false';
-  const typeCheckRegex = /^[\\+\\-~x]\s*(\[[ x]\]\s*)?(Bebas error TypeScript[^\n]*)/gim;
-  if (typeCheckRegex.test(updatedChecklist)) {
-    const prefix = isTypeCheckPassed ? '+ ' : '~ ';
-    updatedChecklist = updatedChecklist.replace(typeCheckRegex, `${prefix}$2`);
-    console.log(`   ➡️ [JIRA SYNC] DoD: Bebas error TypeScript -> ${isTypeCheckPassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
-  }
+  // DoD: Bebas error TypeScript
+  const typeCheckPrefix = isTypeCheckPassed ? '+' : '~';
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'Bebas error TypeScript', typeCheckPrefix);
+  console.log(`   ➡️ [JIRA SYNC] DoD: Bebas error TypeScript -> ${isTypeCheckPassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
 
-  // DoD 2: Unit Test Jest coverage >= 90% lulus (npm test)
-  const isJestCoveragePassed = jestResults.success && (jestResults.numPassedTests || 0) > 0;
-  const jestDodRegex = /^[\\+\\-~x]\s*(\[[ x]\]\s*)?(Unit Test Jest coverage[^\n]*)/gim;
-  if (jestDodRegex.test(updatedChecklist)) {
-    const prefix = isJestCoveragePassed ? '+ ' : '~ ';
-    updatedChecklist = updatedChecklist.replace(jestDodRegex, `${prefix}$2`);
-    console.log(`   ➡️ [JIRA SYNC] DoD: Unit Test Jest coverage -> ${isJestCoveragePassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
-  }
+  // DoD: Unit Test Jest coverage >= 90%
+  const jestCoveragePrefix = isJestCoveragePassed ? '+' : '~';
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'Unit Test Jest coverage', jestCoveragePrefix);
+  console.log(`   ➡️ [JIRA SYNC] DoD: Unit Test Jest coverage -> ${isJestCoveragePassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
 
-  // DoD 3: SonarQube Quality Gate lulus
-  const sonarGateStatus = process.env.SONAR_GATE_STATUS || ''; // 'PASSED' | 'FAILED' | ''
-  const sonarDodRegex = /^[\\+\\-~x]\s*(\[[ x]\]\s*)?(SonarQube Quality Gate lulus[^\n]*)/gim;
-  if (sonarDodRegex.test(updatedChecklist)) {
-    if (sonarGateStatus.toUpperCase() === 'PASSED') {
-      updatedChecklist = updatedChecklist.replace(sonarDodRegex, '+ $2');
-      console.log(`   ➡️ [JIRA SYNC] DoD: SonarQube Quality Gate -> DONE (+)`);
-    } else {
-      updatedChecklist = updatedChecklist.replace(sonarDodRegex, '~ $2');
-      console.log(`   ➡️ [JIRA SYNC] DoD: SonarQube Quality Gate -> IN PROGRESS (~)`);
-    }
-  }
+  // DoD: SonarQube Quality Gate lulus
+  const sonarPrefix = isSonarPassed ? '+' : '~';
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'SonarQube Quality Gate lulus', sonarPrefix);
+  console.log(`   ➡️ [JIRA SYNC] DoD: SonarQube Quality Gate -> ${isSonarPassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
 
   // 5. Simpan ke Issue Property: com.railsware.SmartChecklist.checklist
   console.log(`\nMenyimpan checklist ter-update ke Issue Property (${SMART_CHECKLIST_PROP})...`);
@@ -380,24 +387,38 @@ async function updateSmartChecklist() {
     }
   }
 
-  // 7. Evaluasi Akhir: Jika ada AC yang belum 100% DONE, hentikan CI dengan exit(1)
-  if (!allSubCriteriaPassed) {
+  // 7. Evaluasi Akhir Gatekeeper:
+  // JIKA ADA 1 SAJA AC ATAU DoD YANG TIDAK LOLOS:
+  // KITA TETAP SYNC KE JIRA STATUSNYA (IN PROGRESS ~), LALU BLOKIR CI PIPELINE DENGAN exit(1)!
+  const hasFailures = !allSubCriteriaPassed || !allCiDodPassed;
+
+  if (hasFailures) {
     console.error('\n============================================================');
-    console.error('🛑 [QC Service GATEKEEPER] QUALITY GATE FAILED: PELANGGARAN AC TERDETEKSI!');
+    console.error('🛑 [QC Service GATEKEEPER] QUALITY GATE FAILED: BLOKIR PULL REQUEST MERGE!');
     console.error('============================================================');
-    console.error('❌ Status item di JIRA Smart Checklist telah diubah ke [IN PROGRESS (~)] (Warna Biru).');
-    console.error('Daftar Kriteria yang Gagal / Belum Teruji:');
-    failedViolations.forEach((v, idx) => {
-      console.error(`   ${idx + 1}. [${v.ac}] ${v.sub}`);
-      console.error(`      Test Keys: ${v.tests}`);
-      console.error(`      Penyebab : ${v.reason}`);
-    });
-    console.error('\n🛑 CI Pipeline sekarang dihentikan. PR belum boleh di-merge sampai semua kriteria berstatus DONE (+).\n');
+    console.error('Checklist JIRA telah diperbarui dengan status transparan [IN PROGRESS (~)]');
+
+    if (!allSubCriteriaPassed) {
+      console.error('\n❌ Kriteria AC yang belum tuntas:');
+      failedViolations.forEach((v, idx) => {
+        console.error(`   ${idx + 1}. [${v.ac}] ${v.sub} (Tests: ${v.tests}) - ${v.reason}`);
+      });
+    }
+
+    if (!allCiDodPassed) {
+      console.error('\n❌ Kriteria Definition of Done (DoD) yang belum terpenuhi:');
+      if (!isTypeCheckPassed) console.error('   - TypeScript Type-Checking: FAILED');
+      if (!isJestCoveragePassed) console.error('   - Unit Test Jest Coverage >= 90%: FAILED');
+      if (!isSonarPassed) console.error(`   - SonarQube Quality Gate: ${sonarGateStatus || 'FAILED / PENDING'}`);
+    }
+
+    console.error('\n🛑 Pipeline CI DIHENTIKAN. FE Dev wajib memperbaiki kode sebelum Pull Request diizinkan untuk merge!\n');
     process.exit(1);
   }
 
   console.log(`\n============================================================`);
-  console.log(`🎉 [QC Service AUDIT PASSED] Seluruh AC-01 s/d AC-05 terverifikasi DONE (+) di JIRA!`);
+  console.log(`🎉 [QC Service AUDIT PASSED] Seluruh AC dan DoD CI terverifikasi DONE (+) di JIRA!`);
+  console.log(`PR Memenuhi Kriteria untuk Direview & Di-merge ke branch develop.`);
   console.log(`============================================================\n`);
 }
 
