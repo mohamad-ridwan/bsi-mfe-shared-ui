@@ -319,14 +319,34 @@ async function updateSmartChecklist() {
     console.warn(`⚠️ Error saat membaca fields: ${err.message}`);
   }
 
-  // 2. Ambil konten checklist saat ini dari Issue Property
+  // 2. Ambil data Tiket Jira (Assignee resmi tiket, Reporter, & Custom Fields)
+  console.log(`\nMengambil metadata tiket ${jiraIssueKey} dari JIRA (/rest/api/2/issue/${jiraIssueKey})...`);
+  let ticketAssignee = null;
+  let ticketReporter = null;
+  let currentChecklist = '';
+
+  try {
+    const issueRes = await jiraRequest(`/rest/api/2/issue/${jiraIssueKey}?fields=assignee,reporter,summary,status`, 'GET');
+    if (issueRes.statusCode === 200) {
+      const issueData = JSON.parse(issueRes.body);
+      ticketAssignee = issueData.fields?.assignee || null;
+      ticketReporter = issueData.fields?.reporter || null;
+      console.log(`📋 [Ticket Meta] Tiket: ${jiraIssueKey} - ${issueData.fields?.summary}`);
+      console.log(`   👤 Official Ticket Assignee (FE Dev): ${ticketAssignee ? `${ticketAssignee.displayName} (${ticketAssignee.accountId})` : 'Unassigned'}`);
+      console.log(`   📝 Ticket Reporter: ${ticketReporter ? `${ticketReporter.displayName} (${ticketReporter.accountId})` : 'Unknown'}`);
+    } else {
+      console.warn(`⚠️ Gagal mengambil detail issue: Status ${issueRes.statusCode}`);
+    }
+  } catch (err) {
+    console.warn(`⚠️ Error saat mengambil detail issue: ${err.message}`);
+  }
+
+  // 2.1 Ambil konten checklist saat ini dari Issue Property
   console.log(`\nMengambil konten Smart Checklist dari Issue Property: ${SMART_CHECKLIST_PROP}...`);
   const getPropRes = await jiraRequest(
     `/rest/api/2/issue/${jiraIssueKey}/properties/${SMART_CHECKLIST_PROP}`,
     'GET'
   );
-
-  let currentChecklist = '';
 
   if (getPropRes.statusCode === 200) {
     const parsed = JSON.parse(getPropRes.body);
@@ -347,8 +367,7 @@ async function updateSmartChecklist() {
 
   console.log('✅ Konten Smart Checklist berhasil dimuat dari JIRA.');
 
-  // 2.1 Identifikasi Akun Otentik via Jira API (/rest/api/3/myself)
-  // Menjamin identitas eksekutor valid dan tidak bisa dimanipulasi
+  // 2.2 Identifikasi Akun Otentik Pemanggil API (/rest/api/3/myself)
   let authenticatedUser = null;
   try {
     const myselfRes = await jiraRequest('/rest/api/3/myself', 'GET');
@@ -360,16 +379,22 @@ async function updateSmartChecklist() {
     console.warn(`⚠️ Gagal memeriksa /rest/api/3/myself: ${err.message}`);
   }
 
+  // Tentukan Akun FE DEV Resmi untuk Checklist AC:
+  // Prioritas:
+  // 1. Official Ticket Assignee (Akun FE Dev yang ditugaskan resmi di tiket Jira)
+  // 2. Authenticated API User (Akun yang menjalankan CI)
+  const feDevAccountId = ticketAssignee?.accountId || authenticatedUser?.accountId || null;
+  const feDevDisplayName = ticketAssignee?.displayName || authenticatedUser?.displayName || 'FE Developer';
+  console.log(`📌 [Checklist Attribution] AC akan diatribusikan ke FE Dev: ${feDevDisplayName} (${feDevAccountId})`);
+
   // 3. Transformasi status Smart Checklist untuk AC (AC-01 s/d AC-05)
-  // Gunakan authenticatedUser.accountId jika tersedia agar assignee resmi tercatat di Jira
   let updatedChecklist = currentChecklist;
-  const devAccountId = authenticatedUser ? authenticatedUser.accountId : null;
 
   Object.keys(acSubCriteria).forEach((acKey) => {
     const ac = acSubCriteria[acKey];
     const prefix = ac.overallStatus === 'DONE' ? '+' : ac.overallStatus === 'IN_PROGRESS' ? '~' : '-';
-    updatedChecklist = updateChecklistItem(updatedChecklist, acKey, prefix, devAccountId);
-    console.log(`   ➡️ [JIRA SYNC] ${acKey} -> ${ac.overallStatus} (${prefix}) [Assignee: ${devAccountId || 'as-is'}]`);
+    updatedChecklist = updateChecklistItem(updatedChecklist, acKey, prefix, feDevAccountId);
+    console.log(`   ➡️ [JIRA SYNC] ${acKey} -> ${ac.overallStatus} (${prefix}) [Assignee: ${feDevDisplayName}]`);
   });
 
   // 4. Transformasi Definition of Done (DoD) & Automated Test Execution
