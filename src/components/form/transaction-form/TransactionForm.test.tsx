@@ -346,7 +346,7 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       expect(screen.queryByTestId('AccountBalanceIcon')).not.toBeInTheDocument();
     });
 
-    // TC-CORE-03: Kustomisasi teks header & subjudul kosong
+    // TC-CORE-03: Kustomisasi teks header & subjudul kosong serta verifikasi proteksi line clamp
     it('TC-CORE-03: should render custom title and omit subtitle when subtitle is empty', () => {
       render(
         <TransactionForm
@@ -356,8 +356,32 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
         />,
       );
 
-      expect(screen.getByText('Kustom Title')).toBeInTheDocument();
+      const titleEl = screen.getByText('Kustom Title');
+      expect(titleEl).toBeInTheDocument();
+      expect(titleEl).toHaveAttribute('title', 'Kustom Title');
       expect(screen.queryByText('Bank Syariah Indonesia')).not.toBeInTheDocument();
+    });
+
+    // TC-CORE-05: Proteksi batas maksimal teks header (title & subtitle tooltip)
+    it('TC-CORE-05: should set title attribute on title and subtitle elements for truncation tooltip', () => {
+      const longTitle = 'What is Lorem Ipsum? Lorem Ipsum is simply dummy text of the printing and typesetting industry.'.repeat(3);
+      const longSubtitle = 'A very long subtitle explanation for enterprise banking transaction.'.repeat(3);
+
+      render(
+        <TransactionForm
+          {...defaultProps}
+          title={longTitle}
+          subtitle={longSubtitle}
+        />,
+      );
+
+      const titleEl = screen.getByText(longTitle);
+      const subtitleEl = screen.getByText(longSubtitle);
+
+      expect(titleEl).toBeInTheDocument();
+      expect(titleEl).toHaveAttribute('title', longTitle);
+      expect(subtitleEl).toBeInTheDocument();
+      expect(subtitleEl).toHaveAttribute('title', longSubtitle);
     });
 
     // TC-CORE-04: Submit formulir pada kondisi normal

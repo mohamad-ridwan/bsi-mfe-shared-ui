@@ -115,10 +115,17 @@ export default function TransactionForm({
               </Box>
               <Typography
                 variant="h5"
+                title={title}
                 sx={{
                   fontWeight: 700,
                   color: "primary.main",
                   textAlign: "center",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  wordBreak: "break-word",
                 }}
               >
                 {title}
@@ -127,7 +134,17 @@ export default function TransactionForm({
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{ textAlign: "center", mt: 0.5 }}
+                  title={subtitle}
+                  sx={{
+                    textAlign: "center",
+                    mt: 0.5,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    wordBreak: "break-word",
+                  }}
                 >
                   {subtitle}
                 </Typography>
