@@ -4,7 +4,7 @@ node_modules/
 .pnp.js
 
 # Github
-/.github/workflows/sync-pr-comments-to-jira.yml
+# /.github/workflows/sync-pr-comments-to-jira.yml
 
 # Production / Build output
 dist/

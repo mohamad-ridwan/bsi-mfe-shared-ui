@@ -1,0 +1,69 @@
+name: "Sync PR Discussions & Reviews to Jira"
+
+on:
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+jobs:
+  sync-to-jira:
+    name: "Sync PR Discussion to Jira Comments"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Post PR Activity to Jira Issue Comment"
+        run: |
+          # 1. Ekstrak Issue Key (misal BSI-9) dari judul PR atau branch
+          PR_TITLE="${{ github.event.pull_request.title || github.event.issue.title }}"
+          JIRA_ISSUE_KEY=$(echo "$PR_TITLE" | grep -o -E '[A-Z]+-[0-9]+' | head -n 1)
+
+          if [ -z "$JIRA_ISSUE_KEY" ]; then
+            echo "No Jira issue key detected in PR title: $PR_TITLE. Skipping sync."
+            exit 0
+          fi
+
+          if [ -z "${{ secrets.JIRA_BASE_URL }}" ] || [ -z "${{ secrets.JIRA_API_BASIC_AUTH }}" ]; then
+            echo "Jira credentials secrets not configured. Skipping sync."
+            exit 0
+          fi
+
+          ACTOR="${{ github.actor }}"
+          EVENT_NAME="${{ github.event_name }}"
+
+          # 2. Format Body Komentar berdasarkan tipe event (Review vs Comment)
+          if [ "$EVENT_NAME" == "pull_request_review" ]; then
+            REVIEW_STATE="${{ github.event.review.state }}"
+            REVIEW_BODY="${{ github.event.review.body }}"
+            PR_URL="${{ github.event.review.html_url }}"
+
+            if [ "$REVIEW_STATE" == "changes_requested" ]; then
+              HEADER="🚨 *[QC Service Review] REQUEST CHANGES oleh @${ACTOR}*"
+            elif [ "$REVIEW_STATE" == "approved" ]; then
+              HEADER="✅ *[QC Service Review] APPROVED oleh @${ACTOR}*"
+            else
+              HEADER="💬 *[Code Review Comment] oleh @${ACTOR}*"
+            fi
+
+            COMMENT_TEXT="${HEADER}\n\n*Catatan Review:*\n${REVIEW_BODY}\n\n🔗 [Lihat Detail di GitHub Pull Request](${PR_URL})"
+          else
+            # Event issue_comment (Komentar balasan diskusi)
+            # Pastikan hanya komentar pada Pull Request yang diproses
+            if [ -z "${{ github.event.issue.pull_request }}" ]; then
+              exit 0
+            fi
+
+            COMMENT_BODY="${{ github.event.comment.body }}"
+            COMMENT_URL="${{ github.event.comment.html_url }}"
+            HEADER="💬 *[PR Discussion] @${ACTOR} membalas di Pull Request:*"
+            COMMENT_TEXT="${HEADER}\n\n${COMMENT_BODY}\n\n🔗 [Lihat di GitHub PR](${COMMENT_URL})"
+          fi
+
+          # 3. Kirim ke Jira REST API v3
+          curl -s -X POST \
+            -H "Authorization: Basic ${{ secrets.JIRA_API_BASIC_AUTH }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\":{\"type\":\"doc\",\"version\":1,\"content\":[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$COMMENT_TEXT\"}]}]}}" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/3/issue/${JIRA_ISSUE_KEY}/comment"
+
+          echo "Successfully synced PR activity from @${ACTOR} to Jira issue ${JIRA_ISSUE_KEY}."
+
