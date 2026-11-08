@@ -258,10 +258,30 @@ function jiraRequest(path, method, data = null) {
   });
 }
 
-function updateChecklistItem(text, keyword, newPrefix) {
-  // Regex aman dengan callback replacement function untuk mencegah bug placeholder string
-  const regex = new RegExp('^[+\\-~x]\\s*(?:\\[[^\\]]*\\]\\s*)?(' + keyword + '[^\\n]*)', 'm');
-  return text.replace(regex, (match, title) => newPrefix + ' ' + title);
+function updateChecklistItem(text, keyword, newPrefix, targetAssigneeId = null) {
+  // Regex untuk mencocokkan baris checklist item:
+  // ^([+\\-~x])(\\s*(?:\\[[^\\]]*\\]\\s*)?)(.*keyword.*)$
+  // Group 1: status lama (+, -, ~, x)
+  // Group 2: atribut item seperti [assignee="..."] (jika ada)
+  // Group 3: teks deskripsi checklist (yang mengandung keyword)
+  const regex = new RegExp('^([+\\-~x])(\\s*(?:\\[[^\\]]*\\]\\s*)?)(' + keyword + '.*$)', 'm');
+
+  return text.replace(regex, (match, oldPrefix, attributes, title) => {
+    let finalAttrs = attributes;
+
+    if (targetAssigneeId) {
+      if (/\[assignee="[^"]*"\]/.test(finalAttrs)) {
+        // Ganti assignee lama dengan targetAssigneeId yang tervalidasi API
+        finalAttrs = finalAttrs.replace(/\[assignee="[^"]*"\]/, `[assignee="${targetAssigneeId}"]`);
+      } else {
+        // Tambahkan atribut assignee resmi
+        finalAttrs = ` [assignee="${targetAssigneeId}"] `;
+      }
+    }
+
+    const spacing = finalAttrs && finalAttrs.length > 0 ? finalAttrs : ' ';
+    return `${newPrefix}${spacing}${title}`;
+  });
 }
 
 async function updateSmartChecklist() {
@@ -327,14 +347,29 @@ async function updateSmartChecklist() {
 
   console.log('✅ Konten Smart Checklist berhasil dimuat dari JIRA.');
 
+  // 2.1 Identifikasi Akun Otentik via Jira API (/rest/api/3/myself)
+  // Menjamin identitas eksekutor valid dan tidak bisa dimanipulasi
+  let authenticatedUser = null;
+  try {
+    const myselfRes = await jiraRequest('/rest/api/3/myself', 'GET');
+    if (myselfRes.statusCode === 200) {
+      authenticatedUser = JSON.parse(myselfRes.body);
+      console.log(`🔐 [Identity Verified] Akun API terautentikasi: ${authenticatedUser.displayName} (${authenticatedUser.accountId})`);
+    }
+  } catch (err) {
+    console.warn(`⚠️ Gagal memeriksa /rest/api/3/myself: ${err.message}`);
+  }
+
   // 3. Transformasi status Smart Checklist untuk AC (AC-01 s/d AC-05)
+  // Gunakan authenticatedUser.accountId jika tersedia agar assignee resmi tercatat di Jira
   let updatedChecklist = currentChecklist;
+  const devAccountId = authenticatedUser ? authenticatedUser.accountId : null;
 
   Object.keys(acSubCriteria).forEach((acKey) => {
     const ac = acSubCriteria[acKey];
     const prefix = ac.overallStatus === 'DONE' ? '+' : ac.overallStatus === 'IN_PROGRESS' ? '~' : '-';
-    updatedChecklist = updateChecklistItem(updatedChecklist, acKey, prefix);
-    console.log(`   ➡️ [JIRA SYNC] ${acKey} -> ${ac.overallStatus} (${prefix})`);
+    updatedChecklist = updateChecklistItem(updatedChecklist, acKey, prefix, devAccountId);
+    console.log(`   ➡️ [JIRA SYNC] ${acKey} -> ${ac.overallStatus} (${prefix}) [Assignee: ${devAccountId || 'as-is'}]`);
   });
 
   // 4. Transformasi Definition of Done (DoD) & Automated Test Execution
