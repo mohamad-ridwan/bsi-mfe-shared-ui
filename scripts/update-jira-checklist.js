@@ -402,18 +402,18 @@ async function updateSmartChecklist() {
 
   // DoD: Bebas error TypeScript
   const typeCheckPrefix = isTypeCheckPassed ? '+' : '~';
-  updatedChecklist = updateChecklistItem(updatedChecklist, 'Bebas error TypeScript', typeCheckPrefix);
-  console.log(`   ➡️ [JIRA SYNC] DoD: Bebas error TypeScript -> ${isTypeCheckPassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'Bebas error TypeScript', typeCheckPrefix, feDevAccountId);
+  console.log(`   ➡️ [JIRA SYNC] DoD: Bebas error TypeScript -> ${isTypeCheckPassed ? 'DONE (+)' : 'IN PROGRESS (~)'} [Assignee: ${feDevDisplayName}]`);
 
   // DoD: Unit Test Jest coverage >= 90%
   const jestCoveragePrefix = isJestCoveragePassed ? '+' : '~';
-  updatedChecklist = updateChecklistItem(updatedChecklist, 'Unit Test Jest coverage', jestCoveragePrefix);
-  console.log(`   ➡️ [JIRA SYNC] DoD: Unit Test Jest coverage -> ${isJestCoveragePassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'Unit Test Jest coverage', jestCoveragePrefix, feDevAccountId);
+  console.log(`   ➡️ [JIRA SYNC] DoD: Unit Test Jest coverage -> ${isJestCoveragePassed ? 'DONE (+)' : 'IN PROGRESS (~)'} [Assignee: ${feDevDisplayName}]`);
 
   // DoD: SonarQube Quality Gate lulus
   const sonarPrefix = isSonarPassed ? '+' : '~';
-  updatedChecklist = updateChecklistItem(updatedChecklist, 'SonarQube Quality Gate lulus', sonarPrefix);
-  console.log(`   ➡️ [JIRA SYNC] DoD: SonarQube Quality Gate -> ${isSonarPassed ? 'DONE (+)' : 'IN PROGRESS (~)'}`);
+  updatedChecklist = updateChecklistItem(updatedChecklist, 'SonarQube Quality Gate lulus', sonarPrefix, feDevAccountId);
+  console.log(`   ➡️ [JIRA SYNC] DoD: SonarQube Quality Gate -> ${isSonarPassed ? 'DONE (+)' : 'IN PROGRESS (~)'} [Assignee: ${feDevDisplayName}]`);
 
   // 5. Simpan ke Issue Property: com.railsware.SmartChecklist.checklist
   console.log(`\nMenyimpan checklist ter-update ke Issue Property (${SMART_CHECKLIST_PROP})...`);
