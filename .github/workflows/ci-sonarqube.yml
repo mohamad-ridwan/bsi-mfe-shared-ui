@@ -32,6 +32,7 @@ jobs:
         run: npm ci
 
       - name: "4. TypeScript Type-Checking"
+        id: type-check
         run: npm run type-check
 
       - name: "5. Execute Jest Unit Tests with Coverage & JSON Report"
@@ -70,7 +71,7 @@ jobs:
             export JIRA_ISSUE_KEY="$JIRA_ISSUE_KEY"
             export JIRA_BASE_URL="${{ secrets.JIRA_BASE_URL }}"
             export JIRA_API_BASIC_AUTH="${{ secrets.JIRA_API_BASIC_AUTH }}"
-            export TYPECHECK_PASSED="true"
+            export TYPECHECK_PASSED="${{ steps.type-check.outcome == 'success' && 'true' || 'false' }}"
             export SONAR_GATE_STATUS="${{ steps.sonar-quality-gate.outcome == 'success' && 'PASSED' || 'FAILED' }}"
             node scripts/update-jira-checklist.js
           fi

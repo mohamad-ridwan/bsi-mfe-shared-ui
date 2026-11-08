@@ -152,7 +152,11 @@ export default function TransactionForm({
               type="number"
               fullWidth
               disabled={disabled || isLoading}
-              value={values.amount === 0 ? "" : values.amount}
+              value={
+                values.amount === 0 || values.amount === "0" || values.amount == null
+                  ? ""
+                  : values.amount
+              }
               error={Boolean(errors.amount)}
               helperText={errors.amount}
               onChange={handleAmountChange}

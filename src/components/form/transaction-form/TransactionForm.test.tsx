@@ -75,8 +75,8 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
     });
 
     // TC-AC01-03: Render nominal dengan nilai 0 (zero) menghasilkan string kosong
-    it('TC-AC01-03 [AC-01]: should render empty string for amount when value is 0', () => {
-      render(
+    it('TC-AC01-03 [AC-01]: should render empty string for amount when value is 0 or "0"', () => {
+      const { rerender } = render(
         <TransactionForm
           {...defaultProps}
           values={{ amount: 0, description: '' }}
@@ -84,6 +84,15 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       );
 
       const amountInput = screen.getByLabelText(/Nominal/i) as HTMLInputElement;
+      expect(amountInput.value).toBe('');
+
+      // Uji juga nilai string "0" sesuai rekomendasi QC Service
+      rerender(
+        <TransactionForm
+          {...defaultProps}
+          values={{ amount: '0', description: '' }}
+        />,
+      );
       expect(amountInput.value).toBe('');
     });
 
@@ -216,6 +225,7 @@ describe('TransactionForm Component - Acceptance Criteria (AC) Traceability BSI-
       );
 
       const descriptionInput = screen.getByLabelText(/Keterangan/i);
+      expect(descriptionInput).toHaveAttribute('maxlength', '255');
       await user.type(descriptionInput, 'Transfer tagihan');
 
       expect(handleDescriptionChange).toHaveBeenCalled();

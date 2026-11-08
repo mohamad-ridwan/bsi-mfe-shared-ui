@@ -95,7 +95,10 @@ export interface TransactionFormProps {
   /**
    * Callback ketika field berubah secara umum
    */
-  onChange?: (field: keyof TransactionFormValues, value: any) => void;
+  onChange?: <K extends keyof TransactionFormValues>(
+    field: K,
+    value: TransactionFormValues[K]
+  ) => void;
 
   /**
    * Callback spesifik ketika nilai nominal berubah
