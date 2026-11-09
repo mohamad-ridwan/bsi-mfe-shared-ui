@@ -117,11 +117,9 @@ export const WithCustomSlots: Story = {
         </Box>
       }
       footer={
-        <Box sx={{ mt: 2 }}>
-          <Alert severity="info" icon={<LockOutlinedIcon fontSize="small" />} sx={{ fontSize: "0.8rem", borderRadius: 2 }}>
-            Transaksi dilindungi enkripsi SSL 256-bit berstandar Bank BRI / BSI Security Operations.
-          </Alert>
-        </Box>
+        <Alert severity="info" icon={<LockOutlinedIcon fontSize="small" />} sx={{ fontSize: "0.8rem", borderRadius: 2 }}>
+          Transaksi dilindungi enkripsi SSL 256-bit berstandar Bank BRI / BSI Security Operations.
+        </Alert>
       }
     />
   ),

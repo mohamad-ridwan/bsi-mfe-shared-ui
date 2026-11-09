@@ -224,7 +224,7 @@ export default function TransactionForm({
             </Button>
 
             {/* Optional Footer Slot */}
-            {footer && <Box sx={{ mt: 1 }}>{footer}</Box>}
+            {footer && <Box sx={{ width: "100%" }}>{footer}</Box>}
           </Box>
         </CardContent>
       </Card>
