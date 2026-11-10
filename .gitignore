@@ -3,10 +3,14 @@ node_modules/
 .pnp
 .pnp.js
 
+# Github
+# /.github/workflows/sync-pr-comments-to-jira.yml
+
 # Production / Build output
 dist/
 build/
 out/
+storybook-static/
 
 # Testing & Coverage
 coverage/
@@ -56,3 +60,4 @@ Thumbs.db
 .stylelintcache
 *.tsbuildinfo
 
+jest-results.json

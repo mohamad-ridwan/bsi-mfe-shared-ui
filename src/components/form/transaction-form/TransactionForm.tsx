@@ -61,7 +61,7 @@ export default function TransactionForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!isLoading && !disabled) {
       onSubmit(e);
@@ -79,6 +79,7 @@ export default function TransactionForm({
         ...containerSx,
       }}
     >
+      {/* Card */}
       <Card
         sx={{
           width: "100%",
@@ -114,10 +115,17 @@ export default function TransactionForm({
               </Box>
               <Typography
                 variant="h5"
+                title={title}
                 sx={{
                   fontWeight: 700,
                   color: "primary.main",
                   textAlign: "center",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  wordBreak: "break-word",
                 }}
               >
                 {title}
@@ -126,7 +134,17 @@ export default function TransactionForm({
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{ textAlign: "center", mt: 0.5 }}
+                  title={subtitle}
+                  sx={{
+                    textAlign: "center",
+                    mt: 0.5,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    wordBreak: "break-word",
+                  }}
                 >
                   {subtitle}
                 </Typography>
@@ -151,7 +169,11 @@ export default function TransactionForm({
               type="number"
               fullWidth
               disabled={disabled || isLoading}
-              value={values.amount === 0 ? "" : values.amount}
+              value={
+                values.amount === 0 || values.amount === "0" || values.amount == null
+                  ? ""
+                  : values.amount
+              }
               error={Boolean(errors.amount)}
               helperText={errors.amount}
               onChange={handleAmountChange}
@@ -202,7 +224,7 @@ export default function TransactionForm({
             </Button>
 
             {/* Optional Footer Slot */}
-            {footer && <Box sx={{ mt: 1 }}>{footer}</Box>}
+            {footer && <Box sx={{ width: "100%" }}>{footer}</Box>}
           </Box>
         </CardContent>
       </Card>
