@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { useState } from "react";
-import type { FormEvent } from "react";
+import React, { useState } from "react";
 import { Box, Alert, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
@@ -49,7 +48,6 @@ const InteractiveTransactionForm = (args: Partial<TransactionFormProps>) => {
       disabled={args.disabled}
       hideHeader={args.hideHeader}
       errors={args.errors}
-      children={args.children}
       footer={args.footer}
       onChange={<K extends keyof TransactionFormValues>(field: K, val: TransactionFormValues[K]) => {
         setValues((prev) => ({ ...prev, [field]: val }));
@@ -63,11 +61,13 @@ const InteractiveTransactionForm = (args: Partial<TransactionFormProps>) => {
         setValues((prev) => ({ ...prev, description: val }));
         args.onDescriptionChange?.(val);
       }}
-      onSubmit={(e?: FormEvent<HTMLFormElement>) => {
+      onSubmit={(e?: React.FormEvent<HTMLFormElement>) => {
         if (e) e.preventDefault();
         args.onSubmit?.(e);
       }}
-    />
+    >
+      {args.children}
+    </TransactionForm>
   );
 };
 
@@ -100,28 +100,27 @@ export const WithCustomSlots: Story = {
   render: (args: TransactionFormProps) => (
     <InteractiveTransactionForm
       {...args}
-      children={
-        <Box sx={{ mb: 2 }}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="account-source-label">Rekening Sumber</InputLabel>
-            <Select
-              labelId="account-source-label"
-              defaultValue="bsi-easy-mudharabah"
-              label="Rekening Sumber"
-              startAdornment={<AccountBalanceWalletOutlinedIcon sx={{ mr: 1, color: "primary.main" }} />}
-            >
-              <MenuItem value="bsi-easy-mudharabah">BSI Easy Mudharabah - 7129038192 (Rp 25.400.000)</MenuItem>
-              <MenuItem value="bsi-giro-wadiah">BSI Giro Wadiah - 1092837482 (Rp 150.000.000)</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-      }
       footer={
         <Alert severity="info" icon={<LockOutlinedIcon fontSize="small" />} sx={{ fontSize: "0.8rem", borderRadius: 2 }}>
           Transaksi dilindungi enkripsi SSL 256-bit berstandar Bank BRI / BSI Security Operations.
         </Alert>
       }
-    />
+    >
+      <Box sx={{ mb: 2 }}>
+        <FormControl fullWidth size="small">
+          <InputLabel id="account-source-label">Rekening Sumber</InputLabel>
+          <Select
+            labelId="account-source-label"
+            defaultValue="bsi-easy-mudharabah"
+            label="Rekening Sumber"
+            startAdornment={<AccountBalanceWalletOutlinedIcon sx={{ mr: 1, color: "primary.main" }} />}
+          >
+            <MenuItem value="bsi-easy-mudharabah">BSI Easy Mudharabah - 7129038192 (Rp 25.400.000)</MenuItem>
+            <MenuItem value="bsi-giro-wadiah">BSI Giro Wadiah - 1092837482 (Rp 150.000.000)</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+    </InteractiveTransactionForm>
   ),
   args: {
     title: "Transfer Valuta & Kliring",
