@@ -61,7 +61,7 @@ const InteractiveTransactionForm = (args: Partial<TransactionFormProps>) => {
         setValues((prev) => ({ ...prev, description: val }));
         args.onDescriptionChange?.(val);
       }}
-      onSubmit={(e?: React.FormEvent<HTMLFormElement>) => {
+      onSubmit={(e?: React.SyntheticEvent<HTMLFormElement>) => {
         if (e) e.preventDefault();
         args.onSubmit?.(e);
       }}

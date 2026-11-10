@@ -113,5 +113,5 @@ export interface TransactionFormProps {
   /**
    * Callback saat form di-submit
    */
-  onSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit: (e?: React.SyntheticEvent<HTMLFormElement>) => void;
 }

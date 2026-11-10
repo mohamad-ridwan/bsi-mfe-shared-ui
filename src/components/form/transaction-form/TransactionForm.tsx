@@ -61,7 +61,7 @@ export default function TransactionForm({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!isLoading && !disabled) {
       onSubmit(e);
